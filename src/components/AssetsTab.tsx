@@ -181,7 +181,8 @@ export const AssetsTab: Component = () => {
   });
 
   const handleAssetClick = (e: MouseEvent, id: string) => {
-    selectAsset(id, e.ctrlKey || e.metaKey, e.shiftKey);
+    const allIds = filteredAssets().map(a => a.id);
+    selectAsset(id, allIds, e.ctrlKey || e.metaKey, e.shiftKey);
   };
 
   const currentQuality = () => {

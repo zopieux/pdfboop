@@ -2,7 +2,7 @@ import { Component, createMemo, createEffect, createSignal, onCleanup, onMount }
 import { reconcile } from 'solid-js/store';
 import { styled } from '@macaron-css/solid';
 import { AlertTriangle, RefreshCw, Trash2, Plus } from 'lucide-solid';
-import { state, setState, pushOperation, addPageAt } from '../state';
+import { state, setState, pushOperation, addPageAt, selectPage } from '../state';
 import { Page } from '../types';
 import { renderPreview } from '../lib/previews';
 import { handleReupload } from '../lib/inputs';
@@ -231,22 +231,8 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
   const isSelected = () => state.selection.includes(props.page.id);
 
   const toggleSelect = (e: MouseEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      if (isSelected()) {
-        setState('selection', (s) => s.filter((id) => id !== props.page.id));
-      } else {
-        setState('selection', (s) => [...s, props.page.id]);
-      }
-    } else if (e.shiftKey && state.selection.length > 0) {
-      const lastId = state.selection[state.selection.length - 1];
-      const lastIdx = state.pages.findIndex((p) => p.id === lastId);
-      const start = Math.min(lastIdx, props.index);
-      const end = Math.max(lastIdx, props.index);
-      const range = state.pages.slice(start, end + 1).map((p) => p.id);
-      setState('selection', reconcile([...new Set([...state.selection, ...range])]));
-    } else {
-      setState('selection', [props.page.id]);
-    }
+    const allIds = state.pages.map((p) => p.id);
+    selectPage(props.page.id, allIds, e.ctrlKey || e.metaKey, e.shiftKey);
   };
 
   const handleAddAt = (index: number) => {

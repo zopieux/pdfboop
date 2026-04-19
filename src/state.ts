@@ -1,6 +1,7 @@
 import { createEffect } from 'solid-js';
 import { createStore, produce, reconcile, unwrap } from 'solid-js/store';
 import { EditorState, Page, OriginalFile, PageOperation, AbstractOperation, Asset } from './types';
+import { computeSelection } from './lib/selection';
 
 const [state, setState] = createStore<EditorState>({
   originals: [],
@@ -377,28 +378,33 @@ export const reuploadOriginal = async (id: string, blob: Blob, metadata: { name:
     }),
   );
 
-  recalculatePages(); // Trigger re-render of previews
+recalculatePages(); // Trigger re-render of previews
+};
+
+// Selection helpers
+export const selectPage = (id: string, allIds: string[], multi = false, shift = false) => {
+  const newSelection = computeSelection(
+    unwrap(state.selection),
+    allIds,
+    id,
+    allIds.indexOf(id),
+    multi,
+    shift
+  );
+  setState('selection', reconcile(newSelection));
 };
 
 // Asset selection
-export const selectAsset = (id: string, multi = false, shift = false) => {
-  setState(
-    produce((s) => {
-      if (shift && s.assetSelection.length > 0) {
-        // Multi-select with shift is complex if we don't have the full list
-        // For now, let's just add to selection if multi is on
-        if (!s.assetSelection.includes(id)) s.assetSelection.push(id);
-      } else if (multi) {
-        if (s.assetSelection.includes(id)) {
-          s.assetSelection = s.assetSelection.filter((i) => i !== id);
-        } else {
-          s.assetSelection.push(id);
-        }
-      } else {
-        s.assetSelection = [id];
-      }
-    }),
+export const selectAsset = (id: string, allIds: string[], multi = false, shift = false) => {
+  const newSelection = computeSelection(
+    unwrap(state.assetSelection),
+    allIds,
+    id,
+    allIds.indexOf(id),
+    multi,
+    shift
   );
+  setState('assetSelection', newSelection);
 };
 
 export const clearAssetSelection = () => setState('assetSelection', []);

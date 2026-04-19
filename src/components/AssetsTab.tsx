@@ -1,7 +1,7 @@
 import { Component, For, Show, createMemo } from 'solid-js';
 import { styled } from '@macaron-css/solid';
-import { Trash2 } from 'lucide-solid';
-import { state, selectAsset, deleteSelectedAssets, setAssetQuality } from '../state';
+import { Trash2, Maximize, Scissors } from 'lucide-solid';
+import { state, selectAsset, deleteSelectedAssets, setAssetQuality, setAssetScale } from '../state';
 import { vars } from '../theme';
 import { Button } from './ui/Button';
 import { workspaceAssets } from '../resources';
@@ -21,17 +21,6 @@ const TabContent = styled('div', {
     overflowY: 'auto',
     display: 'flex',
     flexDirection: 'column',
-  },
-});
-
-const LoadingOverlay = styled('div', {
-  base: {
-    padding: vars.gaps.md,
-    textAlign: 'center',
-    fontSize: '11px',
-    color: vars.colors.primary,
-    background: `${vars.colors.primary}11`,
-    borderBottom: `1px solid ${vars.colors.border}`,
   },
 });
 
@@ -106,7 +95,7 @@ const FloatingControls = styled('div', {
     color: vars.colors.text,
     display: 'flex',
     flexDirection: 'column',
-    gap: vars.gaps.sm,
+    gap: vars.gaps.md,
   },
 });
 
@@ -122,17 +111,43 @@ const ControlGroup = styled('div', {
   base: {
     display: 'flex',
     flexDirection: 'column',
-    gap: vars.gaps.sm,
+    gap: vars.gaps.xs,
   },
 });
 
-const QualityInfo = styled('div', {
+const LabelRow = styled('div', {
   base: {
     display: 'flex',
     justifyContent: 'space-between',
     fontSize: '11px',
     color: vars.colors.text,
     opacity: 0.8,
+    marginBottom: '2px',
+  },
+});
+
+const DimensionRow = styled('div', {
+  base: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: vars.gaps.xs,
+    marginTop: '4px',
+  },
+});
+
+const NumberInput = styled('input', {
+  base: {
+    width: '60px',
+    background: vars.colors.bg,
+    border: `1px solid ${vars.colors.border}`,
+    color: vars.colors.text,
+    fontSize: '11px',
+    padding: '2px 4px',
+    borderRadius: '2px',
+    '&:focus': {
+      borderColor: vars.colors.primary,
+      outline: 'none',
+    },
   },
 });
 
@@ -140,6 +155,7 @@ const ButtonRow = styled('div', {
   base: {
     display: 'flex',
     gap: vars.gaps.sm,
+    marginTop: vars.gaps.sm,
   },
 });
 
@@ -173,15 +189,65 @@ export const AssetsTab: Component = () => {
     if (sel.length === 0) return 100;
     const first = sel[0];
     const orig = state.originals.find((o) => o.id === first.originalId);
-    return orig?.assetQualities?.[first.imageRef || ''] ?? 100;
+    return orig?.assetQualities?.[first.ref] ?? 100;
+  };
+
+  const currentScale = () => {
+    const sel = selectedAssets();
+    if (sel.length === 0) return 1.0;
+    const first = sel[0];
+    const orig = state.originals.find((o) => o.id === first.originalId);
+    return orig?.assetScales?.[first.ref] ?? 1.0;
+  };
+
+  const currentW = () => {
+    const sel = selectedAssets();
+    if (sel.length === 0) return 0;
+    return Math.round(sel[0].width * currentScale());
+  };
+
+  const currentH = () => {
+    const sel = selectedAssets();
+    if (sel.length === 0) return 0;
+    return Math.round(sel[0].height * currentScale());
   };
 
   const handleQualityInput = (e: InputEvent & { currentTarget: HTMLInputElement }) => {
     const q = parseInt(e.currentTarget.value);
     for (const a of selectedAssets()) {
-      if (a.imageRef) {
-        setAssetQuality(a.originalId, a.imageRef, q);
-      }
+      setAssetQuality(a.originalId, a.ref, q);
+    }
+  };
+
+  const handleScaleInput = (e: InputEvent & { currentTarget: HTMLInputElement }) => {
+    const s = parseInt(e.currentTarget.value) / 100;
+    for (const a of selectedAssets()) {
+      setAssetScale(a.originalId, a.ref, s);
+    }
+  };
+
+  const updateDimension = (value: number, dimension: 'width' | 'height') => {
+    const sel = selectedAssets();
+    if (sel.length === 0) return;
+    const first = sel[0];
+    const s = Math.min(1.0, value / first[dimension]);
+    for (const a of sel) {
+      setAssetScale(a.originalId, a.ref, s);
+    }
+  };
+
+  const handleWidthChange = (e: Event & { currentTarget: HTMLInputElement }) => {
+    updateDimension(parseInt(e.currentTarget.value) || 0, 'width');
+  };
+
+  const handleHeightChange = (e: Event & { currentTarget: HTMLInputElement }) => {
+    updateDimension(parseInt(e.currentTarget.value) || 0, 'height');
+  };
+
+  const onReset = () => {
+    for (const a of selectedAssets()) {
+      setAssetQuality(a.originalId, a.ref, 100);
+      setAssetScale(a.originalId, a.ref, 1.0);
     }
   };
 
@@ -194,10 +260,6 @@ export const AssetsTab: Component = () => {
   return (
     <Root>
       <TabContent>
-        <Show when={assets.loading}>
-          <LoadingOverlay>Updating assets list...</LoadingOverlay>
-        </Show>
-
         <Show
           when={filteredAssets().length > 0}
           fallback={<EmptyState>No images found in workspace.</EmptyState>}
@@ -222,14 +284,13 @@ export const AssetsTab: Component = () => {
 
       <Show when={selectedAssets().length > 0}>
         <FloatingControls>
-          <SelectionCount>
-            {selectedAssets().length} asset(s) selected
-          </SelectionCount>
+          <SelectionCount>{selectedAssets().length} asset(s) selected</SelectionCount>
+
           <ControlGroup>
-            <QualityInfo>
+            <LabelRow>
               <span>Export Quality</span>
               <span>{currentQuality()}%</span>
-            </QualityInfo>
+            </LabelRow>
             <input
               type="range"
               min="10"
@@ -238,17 +299,46 @@ export const AssetsTab: Component = () => {
               value={currentQuality()}
               onInput={handleQualityInput}
             />
-            <ButtonRow>
-              <Button
-                variant="danger"
-                onClick={onDelete}
-                style={{ width: '100%', padding: '4px', 'font-size': '11px' }}
-              >
-                <Trash2 size={14} style={{ display: 'inline', 'margin-right': '4px' }} />
-                Delete from Document
-              </Button>
-            </ButtonRow>
           </ControlGroup>
+
+          <ControlGroup>
+            <LabelRow>
+              <span>Export Size</span>
+              <span>{Math.round(currentScale() * 100)}%</span>
+            </LabelRow>
+            <input
+              type="range"
+              min="1"
+              max="100"
+              step="1"
+              value={Math.round(currentScale() * 100)}
+              onInput={handleScaleInput}
+            />
+            <DimensionRow>
+              <NumberInput type="number" value={currentW()} onChange={handleWidthChange} />
+              <span style={{ opacity: 0.5 }}>×</span>
+              <NumberInput type="number" value={currentH()} onChange={handleHeightChange} />
+              <span style={{ 'font-size': '10px', opacity: 0.5, 'margin-left': 'auto' }}>px</span>
+            </DimensionRow>
+          </ControlGroup>
+
+          <ButtonRow>
+            <Button
+              variant="secondary"
+              onClick={onReset}
+              style={{ width: '100%', padding: '4px', 'font-size': '11px' }}
+            >
+              Reset
+            </Button>
+            <Button
+              variant="danger"
+              onClick={onDelete}
+              style={{ width: '100%', padding: '4px', 'font-size': '11px' }}
+            >
+              <Trash2 size={14} style={{ display: 'inline', 'margin-right': '4px' }} />
+              Delete
+            </Button>
+          </ButtonRow>
         </FloatingControls>
       </Show>
     </Root>

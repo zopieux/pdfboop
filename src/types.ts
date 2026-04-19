@@ -11,13 +11,16 @@ export type Page = {
   ops: PageOperation;
 };
 
-export interface Asset {
-  id: string; // Format: "originalId:ref" or "originalId:standalone"
-  originalId: string;
-  imageRef?: string; // For PDFs
-  previewUrl: string;
+export interface DiscoveredAsset {
+  ref: string;
   width: number;
   height: number;
+}
+
+export interface Asset extends DiscoveredAsset {
+  id: string; // originalId:ref
+  originalId: string;
+  previewUrl: string;
 }
 
 export type OriginalFile = {
@@ -30,7 +33,10 @@ export type OriginalFile = {
   evicted: boolean;
   pageRatios: number[];
   version: number;
+  assets: DiscoveredAsset[];
+  assetUsage: Record<number, string[]>; // pageIndex -> array of refs
   assetQualities: Record<string, number>;
+  assetScales: Record<string, number>; // 0.01 to 1.0
 };
 
 export type AbstractOperation =

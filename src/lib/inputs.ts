@@ -1,5 +1,6 @@
 import { PDFDocument } from 'pdf-lib';
 import { cacheOriginal, state, setState, pushOperation, getOriginColor, reuploadOriginal } from '../state';
+import { discoverAssets } from './extraction';
 
 export const convertToJpg = async (file: Blob | File): Promise<Blob> => {
   return new Promise((resolve, reject) => {
@@ -66,7 +67,6 @@ export const processUpload = async (files: FileList) => {
       }
     } else if (file.type.startsWith('image/')) {
       const jpgBlob = await convertToJpg(file);
-      // Get dimensions for the ratio
       const img = new Image();
       const url = URL.createObjectURL(jpgBlob);
       await new Promise((resolve) => {
@@ -84,6 +84,9 @@ export const processUpload = async (files: FileList) => {
 
     await cacheOriginal(id, blobToCache);
 
+    // DISCOVERY
+    const { assets, assetUsage } = await discoverAssets(blobToCache);
+
     const original = {
       id,
       name: file.name,
@@ -94,12 +97,14 @@ export const processUpload = async (files: FileList) => {
       evicted: false,
       pageRatios,
       version: 0,
+      assets,
+      assetUsage,
       assetQualities: {},
+      assetScales: {},
     };
 
     setState('originals', (o) => [...o, original]);
     
-    // Set workspace ratio if this is the first page of the project
     if (state.pages.length === 0 && pageRatios.length > 0) {
       setState('workspaceRatio', pageRatios[0]);
     }
@@ -133,13 +138,19 @@ export const handleReupload = async (id: string, file: File) => {
     });
     pageRatios.push(img.height / img.width);
     URL.revokeObjectURL(url);
-
     fileToCache = await wrapImageInPdf(jpgBlob);
     pageCount = 1;
   }
 
+  // DISCOVERY on re-upload
+  const { assets, assetUsage } = await discoverAssets(fileToCache);
+
   await reuploadOriginal(id, fileToCache, { name: file.name, size: file.size }, pageCount);
   
-  // Also update stored ratios in state
-  setState('originals', (o) => o.id === id, 'pageRatios', pageRatios);
+  setState('originals', (o) => o.id === id, (o) => ({
+    ...o,
+    pageRatios,
+    assets,
+    assetUsage,
+  }));
 };

@@ -1,7 +1,8 @@
 import { PDFDocument, PDFRef, PDFName, PDFStream } from 'pdf-lib';
-import { state, getOriginalBlob, originalAssetCache } from '../state';
-import type { AbstractOperation } from '../types';
+import { state, getOriginalBlob } from '../state';
+import { AbstractOperation } from '../types';
 import { compressImageBlob } from './compression';
+import { extractAssetPreview } from './extraction';
 
 const processedPdfCache = new Map<string, Blob>();
 
@@ -9,29 +10,31 @@ export const getProcessedPdfBlob = async (originalId: string, historyIndex: numb
   const original = state.originals.find((o) => o.id === originalId);
   if (!original) return null;
 
-  // 1. Identify ops that structurally change this PDF
   const structuralOps = state.operations.slice(0, historyIndex).filter(
     (op) =>
       (op.type === 'REPLACE_IMAGE' || op.type === 'DELETE_IMAGE') &&
       op.originalId === originalId,
   );
   
-  // 2. Create a stable cache key including structural ops AND qualities
   const qualities = original.assetQualities || {};
-  const cacheKey = `${originalId}:${original.version}:${JSON.stringify(structuralOps)}:${JSON.stringify(qualities)}`;
+  const scales = original.assetScales || {};
+  const cacheKey = `${originalId}:${original.version}:${JSON.stringify(structuralOps)}:${JSON.stringify(qualities)}:${JSON.stringify(scales)}`;
   
   if (processedPdfCache.has(cacheKey)) {
     return processedPdfCache.get(cacheKey)!;
   }
 
-  // 3. Load original
   const rawBlob = await getOriginalBlob(originalId);
   if (!rawBlob) return null;
 
-  const buffer = await rawBlob.arrayBuffer();
-  const pdfDoc = await PDFDocument.load(buffer);
+  if (structuralOps.length === 0 && Object.keys(qualities).length === 0 && Object.keys(scales).length === 0) {
+    return rawBlob;
+  }
 
-  // 4. Apply structural ops
+  const buffer = await rawBlob.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(buffer.slice(0));
+  const originalDoc = await PDFDocument.load(buffer.slice(0)); 
+
   for (const op of structuralOps) {
     if (op.type === 'REPLACE_IMAGE') {
       const replaceOp = op as Extract<AbstractOperation, { type: 'REPLACE_IMAGE' }>;
@@ -53,10 +56,12 @@ export const getProcessedPdfBlob = async (originalId: string, historyIndex: numb
     }
   }
 
-  // 5. Apply asset qualities (compression)
-  for (const [refStr, quality] of Object.entries(qualities)) {
-    if (quality < 100) {
-      await applyQualityToImage(pdfDoc, originalId, refStr, quality / 100);
+  const allRefs = new Set([...Object.keys(qualities), ...Object.keys(scales)]);
+  for (const refStr of allRefs) {
+    const q = (qualities[refStr] ?? 100) / 100;
+    const s = scales[refStr] ?? 1.0;
+    if (q < 1.0 || s < 0.99) {
+      await applyTransformsToImage(pdfDoc, originalDoc, refStr, q, s, rawBlob);
     }
   }
 
@@ -64,7 +69,6 @@ export const getProcessedPdfBlob = async (originalId: string, historyIndex: numb
   const blob = new Blob([bytes as any], { type: 'application/pdf' });
   processedPdfCache.set(cacheKey, blob);
   
-  // Cleanup old entries for this specific original
   for (const key of processedPdfCache.keys()) {
     if (key.startsWith(`${originalId}:`) && key !== cacheKey) {
       processedPdfCache.delete(key);
@@ -74,48 +78,71 @@ export const getProcessedPdfBlob = async (originalId: string, historyIndex: numb
   return blob;
 };
 
-async function applyQualityToImage(pdfDoc: PDFDocument, originalId: string, refStr: string, quality: number) {
+async function applyTransformsToImage(
+  pdfDoc: PDFDocument, 
+  originalDoc: PDFDocument, 
+  refStr: string, 
+  quality: number, 
+  scale: number,
+  originalBlob: Blob
+) {
   try {
     const parts = refStr.split(' ');
     const ref = PDFRef.of(parseInt(parts[0]), parseInt(parts[1]));
-    const obj = pdfDoc.context.lookup(ref);
-    if (!(obj instanceof PDFStream)) return;
+    
+    const srcObj = originalDoc.context.lookup(ref);
+    if (!(srcObj instanceof PDFStream)) return;
 
-    let blob: Blob | null = null;
-    let width: number | undefined;
-    let height: number | undefined;
+    let width = srcObj.dict.get(PDFName.of('Width'))?.asNumber() || srcObj.dict.get(PDFName.of('W'))?.asNumber();
+    let height = srcObj.dict.get(PDFName.of('Height'))?.asNumber() || srcObj.dict.get(PDFName.of('H'))?.asNumber();
+    if (!width || !height) return;
 
-    // 1. Try to use the high-quality extracted version from the cache
-    const cached = originalAssetCache.get(`${originalId}:${refStr}`);
-    if (cached) {
-      blob = cached.blob;
-      width = cached.width;
-      height = cached.height;
-    } else {
-      // 2. Fallback to extracting from stream directly (only works for JPEGs reliably in browser)
-      let contents: Uint8Array;
-      if (typeof (obj as any).getContents === 'function') {
-        contents = (obj as any).getContents();
-      } else {
-        contents = (obj as any).contents;
-      }
-      if (!contents) return;
+    // We use the same rendering-based extraction as the preview to get DECODED pixels
+    // but at 100% scale to avoid quality loss during the intermediate step.
+    const decodedDataUrl = await extractAssetPreview(originalBlob, refStr, 1.0);
+    if (!decodedDataUrl) return;
 
-      const filter = obj.dict.get(PDFName.of('Filter'))?.toString();
-      if (filter?.includes('DCTDecode')) {
-        blob = new Blob([contents], { type: 'image/jpeg' });
-      }
-    }
+    const res = await fetch(decodedDataUrl);
+    const decodedBlob = await res.blob();
 
-    if (!blob) return;
+    // Destination object in the doc we are building
+    const destObj = pdfDoc.context.lookup(ref);
+    if (!(destObj instanceof PDFStream)) return;
 
-    const compressedBlob = await compressImageBlob(blob, quality, width, height).catch(() => null);
+    const targetW = Math.round(width * scale);
+    const targetH = Math.round(height * scale);
+
+    const compressedBlob = await compressImageBlob(decodedBlob, quality, targetW, targetH).catch(() => null);
     if (!compressedBlob) return;
 
     const compressedBytes = new Uint8Array(await compressedBlob.arrayBuffer());
-    await replaceImageAtRef(pdfDoc, refStr, compressedBytes, false); 
+    
+    if (scale >= 0.99) {
+      await replaceImageAtRef(pdfDoc, refStr, compressedBytes, false);
+    } else {
+      const innerImage = await pdfDoc.embedJpg(compressedBytes);
+      const innerRef = innerImage.ref;
+
+      destObj.dict.set(PDFName.of('Subtype'), PDFName.of('Form'));
+      destObj.dict.set(PDFName.of('BBox'), pdfDoc.context.obj([0, 0, 1, 1]));
+      destObj.dict.set(PDFName.of('Resources'), pdfDoc.context.obj({
+        XObject: { 'Img': innerRef }
+      }));
+      
+      const offset = (1 - scale) / 2;
+      const contentStr = `${scale.toFixed(4)} 0 0 ${scale.toFixed(4)} ${offset.toFixed(4)} ${offset.toFixed(4)} cm /Img Do`;
+      const contentBytes = new TextEncoder().encode(contentStr);
+      
+      destObj.contents = contentBytes;
+      destObj.dict.set(PDFName.of('Length'), pdfDoc.context.obj(contentBytes.length));
+      destObj.dict.delete(PDFName.of('Filter'));
+      destObj.dict.delete(PDFName.of('Width'));
+      destObj.dict.delete(PDFName.of('Height'));
+      destObj.dict.delete(PDFName.of('ColorSpace'));
+      destObj.dict.delete(PDFName.of('BitsPerComponent'));
+    }
   } catch (e) {
-    // Silent fail to avoid UI noise if some weird PDF stream is encountered
+    // Silent fail
   }
 }
 

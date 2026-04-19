@@ -16,10 +16,6 @@ const [state, setState] = createStore<EditorState>({
 });
 
 export { state, setState };
-
-// Global cache for original asset pixels (uncompressed), populated by extraction
-export const originalAssetCache = new Map<string, { blob: Blob; width: number; height: number }>();
-
 // Core Evaluator
 export const evaluateTimeline = (originals: OriginalFile[], ops: AbstractOperation[]): Page[] => {
   let pages: Page[] = [];
@@ -411,9 +407,9 @@ export const deleteSelectedAssets = (assets: Asset[]) => {
   const byOriginal: Record<string, string[]> = {};
   for (const assetId of state.assetSelection) {
     const asset = assets.find((a) => a.id === assetId);
-    if (!asset || !asset.imageRef) continue;
+    if (!asset) continue;
     if (!byOriginal[asset.originalId]) byOriginal[asset.originalId] = [];
-    byOriginal[asset.originalId].push(asset.imageRef);
+    byOriginal[asset.originalId].push(asset.ref);
   }
 
   for (const [originalId, refs] of Object.entries(byOriginal)) {
@@ -430,9 +426,9 @@ export const replaceSelectedAssets = async (assets: Asset[], newBlobs: Blob[]) =
   const byOriginal: Record<string, string[]> = {};
   for (const assetId of state.assetSelection) {
     const asset = assets.find((a) => a.id === assetId);
-    if (!asset || !asset.imageRef) continue;
+    if (!asset) continue;
     if (!byOriginal[asset.originalId]) byOriginal[asset.originalId] = [];
-    byOriginal[asset.originalId].push(asset.imageRef);
+    byOriginal[asset.originalId].push(asset.ref);
   }
 
   const blob = newBlobs[0];
@@ -457,6 +453,19 @@ export const setAssetQuality = (originalId: string, imageRef: string, quality: n
     produce((o) => {
       if (!o.assetQualities) o.assetQualities = {};
       o.assetQualities[imageRef] = quality;
+      // Increment version to trigger re-renders and cache invalidation
+      o.version++;
+    }),
+  );
+};
+
+export const setAssetScale = (originalId: string, imageRef: string, scale: number) => {
+  setState(
+    'originals',
+    (o) => o.id === originalId,
+    produce((o) => {
+      if (!o.assetScales) o.assetScales = {};
+      o.assetScales[imageRef] = Math.max(0.01, Math.min(1.0, scale));
       // Increment version to trigger re-renders and cache invalidation
       o.version++;
     }),

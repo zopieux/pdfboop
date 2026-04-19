@@ -1,0 +1,33 @@
+{
+  "name": "pdfboop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "serve": "vite preview",
+    "test": "vitest run --disableConsoleIntercept",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "@macaron-css/core": "1.5.1",
+    "@macaron-css/solid": "1.5.1",
+    "@tanstack/solid-virtual": "^3.13.24",
+    "jspdf": "^2.5.1",
+    "lucide-solid": "^0.330.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.0.379",
+    "solid-js": "^1.8.11"
+  },
+  "devDependencies": {
+    "@macaron-css/vite": "1.5.1",
+    "@testing-library/jest-dom": "^6.4.2",
+    "jsdom": "^24.0.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.1.1",
+    "vite-plugin-solid": "^2.9.1",
+    "vitest": "^1.2.2"
+  }
+}

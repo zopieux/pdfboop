@@ -513,7 +513,7 @@ if (typeof window !== 'undefined') {
     }
   });
 
-  window.addEventListener('drop', (e) => {
+  window.addEventListener('drop', () => {
     setState('draggingKind', null);
-  });
+  }, { capture: true });
 }

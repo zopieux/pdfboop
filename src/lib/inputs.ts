@@ -1,5 +1,12 @@
 import { PDFDocument } from 'pdf-lib';
-import { cacheOriginal, state, setState, pushOperation, getOriginColor, reuploadOriginal } from '../state';
+import {
+  cacheOriginal,
+  getOriginColor,
+  pushOperation,
+  reuploadOriginal,
+  setState,
+  state,
+} from '../state';
 import { discoverAssets } from './extraction';
 
 export const convertToJpg = async (file: Blob | File): Promise<Blob> => {
@@ -15,10 +22,14 @@ export const convertToJpg = async (file: Blob | File): Promise<Blob> => {
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error('Canvas toBlob failed'));
-      }, 'image/jpeg', 0.95);
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('Canvas toBlob failed'));
+        },
+        'image/jpeg',
+        0.95,
+      );
     };
     img.onerror = (e) => {
       URL.revokeObjectURL(url);
@@ -31,7 +42,7 @@ export const convertToJpg = async (file: Blob | File): Promise<Blob> => {
 export const wrapImageInPdf = async (file: File | Blob): Promise<Blob> => {
   const jpgBlob = await convertToJpg(file);
   const data = await jpgBlob.arrayBuffer();
-  
+
   const pdfDoc = await PDFDocument.create();
   const img = await pdfDoc.embedJpg(data);
 
@@ -42,7 +53,7 @@ export const wrapImageInPdf = async (file: File | Blob): Promise<Blob> => {
     width: img.width,
     height: img.height,
   });
-  
+
   const pdfBytes = await pdfDoc.save();
   return new Blob([pdfBytes as any], { type: 'application/pdf' });
 };
@@ -51,10 +62,11 @@ export const processUpload = async (files: FileList) => {
   for (const file of Array.from(files)) {
     const id = crypto.randomUUID();
     const isActuallyPdf = file.type === 'application/pdf';
-    
+
     let blobToCache: Blob = file;
     let pageCount = 0;
     const pageRatios: number[] = [];
+    const pageSizes: { width: number; height: number }[] = [];
 
     if (isActuallyPdf) {
       const data = await file.arrayBuffer();
@@ -64,6 +76,7 @@ export const processUpload = async (files: FileList) => {
         const p = pdf.getPage(i);
         const { width, height } = p.getSize();
         pageRatios.push(height / width);
+        pageSizes.push({ width, height });
       }
     } else if (file.type.startsWith('image/')) {
       const jpgBlob = await convertToJpg(file);
@@ -74,6 +87,7 @@ export const processUpload = async (files: FileList) => {
         img.src = url;
       });
       pageRatios.push(img.height / img.width);
+      pageSizes.push({ width: img.width, height: img.height });
       URL.revokeObjectURL(url);
 
       blobToCache = await wrapImageInPdf(jpgBlob);
@@ -96,6 +110,7 @@ export const processUpload = async (files: FileList) => {
       color: getOriginColor(state.originals.length),
       evicted: false,
       pageRatios,
+      pageSizes,
       version: 0,
       assets,
       assetUsage,
@@ -104,12 +119,16 @@ export const processUpload = async (files: FileList) => {
     };
 
     setState('originals', (o) => [...o, original]);
-    
+
     if (state.pages.length === 0 && pageRatios.length > 0) {
       setState('workspaceRatio', pageRatios[0]);
     }
 
-    pushOperation({ type: 'APPEND_ORIGINAL', originalId: id, instanceId: crypto.randomUUID() } as any);
+    pushOperation({
+      type: 'APPEND_ORIGINAL',
+      originalId: id,
+      instanceId: crypto.randomUUID(),
+    } as any);
   }
 };
 
@@ -118,6 +137,7 @@ export const handleReupload = async (id: string, file: File) => {
   let fileToCache: File | Blob = file;
   let pageCount = 1;
   const pageRatios: number[] = [];
+  const pageSizes: { width: number; height: number }[] = [];
 
   if (isActuallyPdf) {
     const data = await file.arrayBuffer();
@@ -127,6 +147,7 @@ export const handleReupload = async (id: string, file: File) => {
       const p = pdf.getPage(i);
       const { width, height } = p.getSize();
       pageRatios.push(height / width);
+      pageSizes.push({ width, height });
     }
   } else if (file.type.startsWith('image/')) {
     const jpgBlob = await convertToJpg(file);
@@ -137,6 +158,7 @@ export const handleReupload = async (id: string, file: File) => {
       img.src = url;
     });
     pageRatios.push(img.height / img.width);
+    pageSizes.push({ width: img.width, height: img.height });
     URL.revokeObjectURL(url);
     fileToCache = await wrapImageInPdf(jpgBlob);
     pageCount = 1;
@@ -146,11 +168,16 @@ export const handleReupload = async (id: string, file: File) => {
   const { assets, assetUsage } = await discoverAssets(fileToCache);
 
   await reuploadOriginal(id, fileToCache, { name: file.name, size: file.size }, pageCount);
-  
-  setState('originals', (o) => o.id === id, (o) => ({
-    ...o,
-    pageRatios,
-    assets,
-    assetUsage,
-  }));
+
+  setState(
+    'originals',
+    (o) => o.id === id,
+    (o) => ({
+      ...o,
+      pageRatios,
+      pageSizes,
+      assets,
+      assetUsage,
+    }),
+  );
 };

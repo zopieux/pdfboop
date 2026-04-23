@@ -1,11 +1,10 @@
-
 export function computeSelection(
   current: string[],
   allIds: string[],
   clickedId: string,
   clickedIndex: number,
   multi: boolean,
-  shift: boolean
+  shift: boolean,
 ): string[] {
   if (multi) {
     if (current.includes(clickedId)) {

@@ -1,10 +1,11 @@
-import { Component } from 'solid-js';
 import { styled } from '@macaron-css/solid';
 import { Files, Image as ImageIcon } from 'lucide-solid';
+import type { Component } from 'solid-js';
+import { setActiveTab, state } from '../state';
 import { vars } from '../theme';
-import { FilesTab } from './FilesTab';
 import { AssetsTab } from './AssetsTab';
-import { state, setActiveTab } from '../state';
+import { FilesTab } from './FilesTab';
+import { ResizerPane } from './ResizerPane';
 
 const StyledAside = styled('aside', {
   base: {
@@ -64,6 +65,15 @@ const TabContent = styled('div', {
   base: {
     flex: 1,
     overflowY: 'auto',
+    minHeight: 0,
+  },
+});
+
+const ResizerWrapper = styled('div', {
+  base: {
+    height: '30%',
+    flexShrink: 0,
+    minHeight: '180px', // Ensure it doesn't get too squashed
   },
 });
 
@@ -71,23 +81,19 @@ export const SidePane: Component = () => {
   return (
     <StyledAside>
       <TabList>
-        <TabButton
-          active={state.activeTab === 'files'}
-          onClick={() => setActiveTab('files')}
-        >
+        <TabButton active={state.activeTab === 'files'} onClick={() => setActiveTab('files')}>
           <Files size={16} /> Files
         </TabButton>
-        <TabButton
-          active={state.activeTab === 'assets'}
-          onClick={() => setActiveTab('assets')}
-        >
+        <TabButton active={state.activeTab === 'assets'} onClick={() => setActiveTab('assets')}>
           <ImageIcon size={16} /> Assets
         </TabButton>
       </TabList>
 
-      <TabContent>
-        {state.activeTab === 'files' ? <FilesTab /> : <AssetsTab />}
-      </TabContent>
+      <TabContent>{state.activeTab === 'files' ? <FilesTab /> : <AssetsTab />}</TabContent>
+
+      <ResizerWrapper>
+        <ResizerPane />
+      </ResizerWrapper>
     </StyledAside>
   );
 };

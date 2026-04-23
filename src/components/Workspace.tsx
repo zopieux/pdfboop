@@ -1,12 +1,12 @@
-import { Component, For, onMount, onCleanup, createSignal, createEffect, createMemo } from 'solid-js';
 import { styled } from '@macaron-css/solid';
-import { Upload, Plus } from 'lucide-solid';
-import { state, setState, addPageAt } from '../state';
-import { PageItem } from './PageItem';
-import { vars } from '../theme';
-import { Button } from './ui/Button';
-import { processUpload } from '../lib/inputs';
 import { createVirtualizer } from '@tanstack/solid-virtual';
+import { Plus, Upload } from 'lucide-solid';
+import { type Component, createMemo, createSignal, For, onCleanup, onMount } from 'solid-js';
+import { processUpload } from '../lib/inputs';
+import { addPageAt, cancelPickMode, setState, state } from '../state';
+import { vars } from '../theme';
+import { PageItem } from './PageItem';
+import { Button } from './ui/Button';
 
 const StyledWorkspace = styled('div', {
   base: {
@@ -73,7 +73,8 @@ export const Workspace: Component = () => {
   };
 
   const handleDragLeave = (e: DragEvent) => {
-    const rect = e.currentTarget instanceof HTMLElement ? e.currentTarget.getBoundingClientRect() : null;
+    const rect =
+      e.currentTarget instanceof HTMLElement ? e.currentTarget.getBoundingClientRect() : null;
     if (rect) {
       if (
         e.clientX <= rect.left ||
@@ -123,7 +124,7 @@ export const Workspace: Component = () => {
   const itemHeight = createMemo(() => {
     const lg = 20; // vars.gaps.lg
     const contentW = contentWidth();
-    const contentH = contentW * (state.workspaceRatio || 1.414);
+    const contentH = contentW * (state.workspaceRatio || Math.SQRT2);
     return contentH + 56 + lg;
   });
 
@@ -138,7 +139,9 @@ export const Workspace: Component = () => {
   });
 
   const virtualizer = createVirtualizer({
-    get count() { return rows().length },
+    get count() {
+      return rows().length;
+    },
     getScrollElement: () => containerRef || null,
     estimateSize: () => itemHeight(),
     overscan: 2,
@@ -150,6 +153,11 @@ export const Workspace: Component = () => {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onClick={(e: MouseEvent & { target: HTMLElement }) => {
+        if (e.target === containerRef && state.pickingAspectFor) {
+          cancelPickMode();
+        }
+      }}
     >
       <StyledVirtualContainer
         style={{
@@ -173,17 +181,21 @@ export const Workspace: Component = () => {
             >
               <For each={rows()[virtualRow.index] ?? []}>
                 {(page, i) => (
-                  <div style={{ flex: 1, 'min-width': 0, display: 'flex', 'flex-direction': 'column' }}>
-                    <PageItem 
-                      page={page} 
-                      index={virtualRow.index * columns() + i()} 
+                  <div
+                    style={{ flex: 1, 'min-width': 0, display: 'flex', 'flex-direction': 'column' }}
+                  >
+                    <PageItem
+                      page={page}
+                      index={virtualRow.index * columns() + i()}
                       width={contentWidth()}
                     />
                   </div>
                 )}
               </For>
               {/* Fill remaining space in the last row to maintain grid alignment */}
-              <For each={Array.from({ length: columns() - (rows()[virtualRow.index]?.length ?? 0) })}>
+              <For
+                each={Array.from({ length: columns() - (rows()[virtualRow.index]?.length ?? 0) })}
+              >
                 {() => <div style={{ flex: 1 }} />}
               </For>
             </div>
@@ -209,10 +221,17 @@ export const Workspace: Component = () => {
         )}
       </StyledVirtualContainer>
 
-
       {state.pages.length === 0 && !dragInfo() && (
         <EmptyState>
-          <div style={{ display: 'flex', 'align-items': 'center', 'justify-content': 'center', 'flex-wrap': 'wrap', gap: vars.gaps.sm }}>
+          <div
+            style={{
+              display: 'flex',
+              'align-items': 'center',
+              'justify-content': 'center',
+              'flex-wrap': 'wrap',
+              gap: vars.gaps.sm,
+            }}
+          >
             <span style={{ opacity: 0.6 }}>To start, upload a PDF, upload an image, or</span>
             <Button onClick={() => addPageAt(0)} style={{ 'font-size': '13px' }}>
               <Plus size={14} /> add a blank page

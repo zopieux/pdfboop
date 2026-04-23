@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PDFDocument } from 'pdf-lib';
-import { generateProjectPdf } from './export';
-import { state, resetState } from '../state';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as stateModule from '../state';
+import { resetState, state } from '../state';
+import { generateProjectPdf } from './export';
 
 if (typeof Blob !== 'undefined' && !Blob.prototype.arrayBuffer) {
   Blob.prototype.arrayBuffer = function () {
@@ -75,7 +75,12 @@ describe('PDF Manipulation (Real Files)', () => {
           color: 'red',
           evicted: false,
           pageRatios: [2], // 200/100
+          pageSizes: [{ width: 100, height: 200 }],
           version: 0,
+          assets: [],
+          assetUsage: {},
+          assetQualities: {},
+          assetScales: {},
         },
       ],
       pages: [
@@ -83,9 +88,11 @@ describe('PDF Manipulation (Real Files)', () => {
           id: 'p1',
           originalId: 'o1',
           originalPageIndex: 0,
-          ops: { rotation: 90, flipH: false, flipV: false },
+          originalSize: { width: 100, height: 200 },
         },
       ],
+      operations: [{ type: 'TRANSFORM', pageIds: ['p1'], operation: 'rotateCW' }] as any,
+      historyIndex: 1,
     });
 
     // Mock blob retrieval
@@ -96,7 +103,9 @@ describe('PDF Manipulation (Real Files)', () => {
 
     expect(resultDoc.getPageCount()).toBe(1);
     const page = resultDoc.getPage(0);
-    expect(page.getRotation().angle).toBe(90);
+    // After CW rotation, the exported page canvas should be 200×100
+    expect(page.getWidth()).toBeCloseTo(200);
+    expect(page.getHeight()).toBeCloseTo(100);
   });
 
   it('merges multiple PDF pages with different rotations', async () => {
@@ -114,7 +123,12 @@ describe('PDF Manipulation (Real Files)', () => {
           color: 'red',
           evicted: false,
           pageRatios: [2], // 200/100
+          pageSizes: [{ width: 100, height: 200 }],
           version: 0,
+          assets: [],
+          assetUsage: {},
+          assetQualities: {},
+          assetScales: {},
         },
       ],
       pages: [
@@ -122,15 +136,21 @@ describe('PDF Manipulation (Real Files)', () => {
           id: 'p1',
           originalId: 'o1',
           originalPageIndex: 0,
-          ops: { rotation: 0, flipH: false, flipV: false },
+          originalSize: { width: 100, height: 200 },
         },
         {
           id: 'p2',
           originalId: 'o1',
           originalPageIndex: 0,
-          ops: { rotation: 180, flipH: false, flipV: false },
+          originalSize: { width: 100, height: 200 },
         },
       ],
+      operations: [
+        // p2 gets 180° rotation (two CW rotations)
+        { type: 'TRANSFORM', pageIds: ['p2'], operation: 'rotateCW' },
+        { type: 'TRANSFORM', pageIds: ['p2'], operation: 'rotateCW' },
+      ] as any,
+      historyIndex: 2,
     });
 
     vi.mocked(stateModule.getOriginalBlob).mockResolvedValue(pdfBlob);
@@ -139,8 +159,12 @@ describe('PDF Manipulation (Real Files)', () => {
     const resultDoc = await PDFDocument.load(resultBytes);
 
     expect(resultDoc.getPageCount()).toBe(2);
-    expect(resultDoc.getPage(0).getRotation().angle).toBe(0);
-    expect(resultDoc.getPage(1).getRotation().angle).toBe(180);
+    // p1: no rotation → 100×200
+    expect(resultDoc.getPage(0).getWidth()).toBeCloseTo(100);
+    expect(resultDoc.getPage(0).getHeight()).toBeCloseTo(200);
+    // p2: 180° rotation → still 100×200 canvas
+    expect(resultDoc.getPage(1).getWidth()).toBeCloseTo(100);
+    expect(resultDoc.getPage(1).getHeight()).toBeCloseTo(200);
   });
 
   it('embeds an image as a PDF page', async () => {
@@ -152,7 +176,7 @@ describe('PDF Manipulation (Real Files)', () => {
       0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
       0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
     ]);
-    const imgBlob = new Blob([imgData] as any, { type: 'image/png' });
+    const _imgBlob = new Blob([imgData] as any, { type: 'image/png' });
 
     resetState({
       originals: [
@@ -165,7 +189,12 @@ describe('PDF Manipulation (Real Files)', () => {
           color: 'blue',
           evicted: false,
           pageRatios: [1],
+          pageSizes: [{ width: 1, height: 1 }],
           version: 0,
+          assets: [],
+          assetUsage: {},
+          assetQualities: {},
+          assetScales: {},
         },
       ],
       pages: [
@@ -173,7 +202,7 @@ describe('PDF Manipulation (Real Files)', () => {
           id: 'p1',
           originalId: 'o2',
           originalPageIndex: 0,
-          ops: { rotation: 0, flipH: false, flipV: false },
+          originalSize: { width: 1, height: 1 },
         },
       ],
     });
@@ -202,7 +231,7 @@ describe('PDF Manipulation (Real Files)', () => {
           id: 'p1',
           originalId: '', // Blank
           originalPageIndex: -1,
-          ops: { rotation: 0, flipH: false, flipV: false },
+          originalSize: { width: 595.28, height: 595.28 },
         },
       ],
       workspaceRatio: 1.0, // Square page for testing
@@ -213,8 +242,8 @@ describe('PDF Manipulation (Real Files)', () => {
 
     expect(resultDoc.getPageCount()).toBe(1);
     const page = resultDoc.getPage(0);
-    expect(page.getWidth()).toBe(595.28);
-    expect(page.getHeight()).toBe(595.28);
+    expect(page.getWidth()).toBeCloseTo(595.28);
+    expect(page.getHeight()).toBeCloseTo(595.28);
   });
 
   it('handles user workflow: delete pages then replace with shorter PDF', async () => {
@@ -237,7 +266,16 @@ describe('PDF Manipulation (Real Files)', () => {
           color: 'red',
           evicted: false,
           pageRatios: [2, 2, 2],
+          pageSizes: [
+            { width: 100, height: 200 },
+            { width: 100, height: 200 },
+            { width: 100, height: 200 },
+          ],
           version: 0,
+          assets: [],
+          assetUsage: {},
+          assetQualities: {},
+          assetScales: {},
         },
       ],
       operations: [

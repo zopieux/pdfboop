@@ -1,29 +1,29 @@
-import { Component } from 'solid-js';
 import { styled } from '@macaron-css/solid';
 import {
   Download,
-  Upload,
-  Trash2,
-  Undo2,
-  Redo2,
-  RotateCw,
-  RotateCcw,
   FlipHorizontal,
   FlipVertical,
+  Redo2,
+  RotateCcw,
+  RotateCw,
+  Trash2,
+  Undo2,
+  Upload,
 } from 'lucide-solid';
+import type { Component } from 'solid-js';
+import { exportProject } from '../lib/export';
+import { processUpload } from '../lib/inputs';
 import {
-  state,
-  undo,
-  redo,
   clearWorkspace,
-  rotateCWSelected,
-  rotateCCWSelected,
+  deleteSelected,
   flipHSelected,
   flipVSelected,
-  deleteSelected,
+  redo,
+  rotateCCWSelected,
+  rotateCWSelected,
+  state,
+  undo,
 } from '../state';
-import { processUpload } from '../lib/inputs';
-import { exportProject } from '../lib/export';
 import { vars } from '../theme';
 import { Button } from './ui/Button';
 

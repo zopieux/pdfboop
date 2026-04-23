@@ -1,9 +1,9 @@
-import { Component, onMount } from 'solid-js';
 import { styled } from '@macaron-css/solid';
+import { type Component, onMount } from 'solid-js';
+import { SidePane } from './components/SidePane';
 import { TopBar } from './components/TopBar';
 import { Workspace } from './components/Workspace';
-import { SidePane } from './components/SidePane';
-import { loadState, saveState, moveSelection, undo, redo, deleteSelected } from './state';
+import { deleteSelected, loadState, moveSelection, redo, saveState, undo } from './state';
 import { themeClass } from './theme';
 
 const AppContainer = styled('div', {

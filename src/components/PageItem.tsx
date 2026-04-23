@@ -1,12 +1,21 @@
-import { Component, createMemo, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
-import { reconcile } from 'solid-js/store';
 import { styled } from '@macaron-css/solid';
-import { AlertTriangle, RefreshCw, Trash2, Plus } from 'lucide-solid';
-import { state, setState, pushOperation, addPageAt, selectPage } from '../state';
-import { Page } from '../types';
-import { renderPreview } from '../lib/previews';
+import { AlertTriangle, Plus, RefreshCw, Trash2 } from 'lucide-solid';
+import {
+  type Component,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+  Show,
+} from 'solid-js';
+import { resolveGeometry } from '../lib/geo';
 import { handleReupload } from '../lib/inputs';
+import { renderPreview } from '../lib/previews';
+import { addPageAt, pushOperation, selectPage, state } from '../state';
 import { vars } from '../theme';
+import type { Page } from '../types';
+import { MatchAspectModal } from './MatchAspectModal';
 import { Button } from './ui/Button';
 
 const PageContainer = styled('div', {
@@ -24,6 +33,11 @@ const PageContainer = styled('div', {
       '&.selected': {
         outline: `2px solid ${vars.colors.primary}`,
         outlineOffset: '1px',
+      },
+      '&.picking-dimmed': {
+        opacity: 0.3,
+        cursor: 'default',
+        pointerEvents: 'none',
       },
     },
   },
@@ -192,6 +206,7 @@ const StyledCanvas = styled('canvas', {
 export const PageItem: Component<{ page: Page; index: number; width: number }> = (props) => {
   const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
   const [measuredWidth, setMeasuredWidth] = createSignal(props.width);
+  const [pickedTarget, setPickedTarget] = createSignal<Page | null>(null);
   let containerRef: HTMLDivElement | undefined;
 
   const original = createMemo(() => state.originals.find((o) => o.id === props.page.originalId));
@@ -208,13 +223,14 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
     const c = canvas();
     const w = measuredWidth();
     if (c && !original()?.evicted) {
-      // Track primitives for reactivity
-      const ops = props.page.ops;
+      // Track reactivity: re-render when history changes
+      void state.historyIndex;
+      void state.operations.length;
       original(); // Track re-uploads
-      
+
       const abortController = new AbortController();
       renderPreview(props.page, c, w, abortController.signal);
-      
+
       onCleanup(() => {
         abortController.abort();
       });
@@ -230,7 +246,31 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
 
   const isSelected = () => state.selection.includes(props.page.id);
 
+  const getPageAspect = (p: Page) => {
+    const ops = state.operations.slice(0, state.historyIndex);
+    const geo = resolveGeometry(p.originalSize, ops, p.id);
+    return geo.canvasHeight / geo.canvasWidth;
+  };
+
+  const isDimmed = () => {
+    if (!state.pickingAspectFor) return false;
+    const sourcePageId = state.pickingAspectFor[0];
+    const sourcePage = state.pages.find((p) => p.id === sourcePageId);
+    if (!sourcePage) return false;
+
+    // Dim if it has the SAME aspect ratio as the source
+    const sourceAspect = getPageAspect(sourcePage);
+    const myAspect = getPageAspect(props.page);
+    return Math.abs(sourceAspect - myAspect) < 0.001;
+  };
+
   const toggleSelect = (e: MouseEvent) => {
+    if (state.pickingAspectFor) {
+      if (!isDimmed()) {
+        setPickedTarget(props.page);
+      }
+      return;
+    }
     const allIds = state.pages.map((p) => p.id);
     selectPage(props.page.id, allIds, e.ctrlKey || e.metaKey, e.shiftKey);
   };
@@ -254,16 +294,16 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
-    
+
     // Hard filtering
     const file = e.dataTransfer?.files[0];
-    if (file && original() && original()?.evicted) {
+    if (file && original()?.evicted) {
       const droppedKind = file.type === 'application/pdf' ? 'pdf' : 'image';
       if (droppedKind !== original()?.type) {
         alert(`Mismatch: This page requires a ${original()?.type.toUpperCase()} file.`);
         return;
       }
-      await handleReupload(original()!.id, file);
+      await handleReupload(original()?.id, file);
     }
   };
 
@@ -275,7 +315,7 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
     const target = e.target as HTMLInputElement;
     const file = target.files?.[0];
     if (file && original()) {
-      await handleReupload(original()!.id, file);
+      await handleReupload(original()?.id, file);
     }
   };
 
@@ -290,7 +330,17 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
   });
 
   return (
-    <PageContainer ref={containerRef} classList={{ selected: isSelected() }} onClick={toggleSelect}>
+    <PageContainer
+      ref={containerRef}
+      classList={{
+        selected: isSelected(),
+        'picking-dimmed': isDimmed(),
+      }}
+      onClick={toggleSelect}
+    >
+      <Show when={pickedTarget()}>
+        <MatchAspectModal targetPage={pickedTarget()!} onClose={() => setPickedTarget(null)} />
+      </Show>
       <Section>
         <PageOpButton
           onClick={(e: MouseEvent) => {
@@ -381,7 +431,14 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
             <>
               <MetadataText style={{ 'flex-grow': 1 }}>{original()?.name}</MetadataText>
               {(original()?.pageCount ?? 0) > 1 && (
-                <span style={{ 'white-space': 'nowrap', 'flex-shrink': 0, opacity: 0.6, 'font-weight': 400 }}>
+                <span
+                  style={{
+                    'white-space': 'nowrap',
+                    'flex-shrink': 0,
+                    opacity: 0.6,
+                    'font-weight': 400,
+                  }}
+                >
                   (#{props.page.originalPageIndex + 1})
                 </span>
               )}

@@ -1,7 +1,7 @@
-import { createEffect } from 'solid-js';
 import { createStore, produce, reconcile, unwrap } from 'solid-js/store';
-import { EditorState, Page, OriginalFile, PageOperation, AbstractOperation, Asset } from './types';
+import { resolveGeometry } from './lib/geo';
 import { computeSelection } from './lib/selection';
+import type { AbstractOperation, Asset, EditorState, OriginalFile, Page } from './types';
 
 const [state, setState] = createStore<EditorState>({
   originals: [],
@@ -11,13 +11,15 @@ const [state, setState] = createStore<EditorState>({
   selection: [],
   assetSelection: [],
   zoom: 4,
-  workspaceRatio: 1.414, // A4 ratio
+  workspaceRatio: Math.SQRT2, // A4 ratio
   draggingKind: null,
   activeTab: 'files',
 });
 
-export { state, setState };
-// Core Evaluator
+export { setState, state };
+// Core Evaluator — geometry ops (TRANSFORM, RESIZE, CROP) stay in the timeline
+// and are resolved on demand via resolveGeometry(). Only structural ops are
+// evaluated here to produce the page list.
 export const evaluateTimeline = (originals: OriginalFile[], ops: AbstractOperation[]): Page[] => {
   let pages: Page[] = [];
 
@@ -26,16 +28,14 @@ export const evaluateTimeline = (originals: OriginalFile[], ops: AbstractOperati
       case 'APPEND_ORIGINAL': {
         const orig = originals.find((o) => o.id === op.originalId);
         if (orig) {
-          const newPages: Page[] = [];
           for (let i = 0; i < orig.pageCount; i++) {
-            newPages.push({
+            pages.push({
               id: `${op.instanceId}_p${i}`,
               originalId: orig.id,
               originalPageIndex: i,
-              ops: { rotation: 0, flipH: false, flipV: false },
+              originalSize: orig.pageSizes[i],
             });
           }
-          pages.push(...newPages);
         }
         break;
       }
@@ -45,7 +45,7 @@ export const evaluateTimeline = (originals: OriginalFile[], ops: AbstractOperati
           id: op.pageId,
           originalId: '',
           originalPageIndex: -1,
-          ops: { rotation: 0, flipH: false, flipV: false },
+          originalSize: op.originalSize,
         });
         break;
       }
@@ -60,23 +60,8 @@ export const evaluateTimeline = (originals: OriginalFile[], ops: AbstractOperati
         pages.splice(clampedIndex, 0, ...toMove);
         break;
       }
-      case 'TRANSFORM': {
-        pages = pages.map((p) => {
-          if (!op.pageIds.includes(p.id)) return p;
-          const root = { ...p, ops: { ...p.ops } };
-          if (op.operation === 'rotateCW') root.ops.rotation = (root.ops.rotation + 90) % 360;
-          if (op.operation === 'rotateCCW')
-            root.ops.rotation = (root.ops.rotation - 90 + 360) % 360;
-          if (op.operation === 'flipH') root.ops.flipH = !root.ops.flipH;
-          if (op.operation === 'flipV') root.ops.flipV = !root.ops.flipV;
-          return root;
-        });
-        break;
-      }
-      case 'REPLACE_IMAGE':
-      case 'DELETE_IMAGE':
-        // These affect the PDF content, handled by evaluateTimeline as well
-        break;
+      // TRANSFORM, RESIZE, CROP: geometry ops — resolved on demand.
+      // REPLACE_IMAGE, DELETE_IMAGE: PDF content ops — handled by processed.ts.
     }
   }
 
@@ -88,29 +73,20 @@ export const recalculatePages = () => {
   const newPages = evaluateTimeline(unwrap(state.originals), unwrap(currentOps));
   setState('pages', reconcile(newPages, { key: 'id' }));
   setState('selection', (s) => s.filter((id) => newPages.some((p) => p.id === id)));
-  // Also clean up asset selection if assets might have been removed
-  // (though assets are tied to originals/ops, we check if they are still relevant)
-  // We can't easily check asset validity here without workspaceAssets, 
-  // but we can at least filter by existing originals for now.
-  setState('assetSelection', (s) => s.filter((id) => {
-    const originalId = id.split(':')[0];
-    return state.originals.some(o => o.id === originalId);
-  }));
+  setState('assetSelection', (s) =>
+    s.filter((id) => {
+      const originalId = id.split(':')[0];
+      return state.originals.some((o) => o.id === originalId);
+    }),
+  );
 
-  // Update workspace ratio based on the first non-blank page (the "trend setter")
+  // Update workspace ratio based on the first non-blank page
   const trendSetter = newPages.find((p) => p.originalId !== '');
   if (trendSetter) {
-    const orig = state.originals.find((o) => o.id === trendSetter.originalId);
-    if (orig?.pageRatios?.[trendSetter.originalPageIndex] !== undefined) {
-      let ratio = orig.pageRatios[trendSetter.originalPageIndex];
-      // Invert ratio if page is rotated 90 or 270 degrees
-      if (trendSetter.ops.rotation % 180 !== 0) {
-        ratio = 1 / ratio;
-      }
-      setState('workspaceRatio', ratio);
-    }
+    const geo = resolveGeometry(trendSetter.originalSize, currentOps, trendSetter.id);
+    setState('workspaceRatio', geo.canvasHeight / geo.canvasWidth);
   } else {
-    setState('workspaceRatio', 1.414); // Back to A4 default if empty or only blanks
+    setState('workspaceRatio', Math.SQRT2);
   }
 
   saveState();
@@ -150,8 +126,9 @@ export const saveState = () => {
   delete (stateToSave as any).selection;
   delete (stateToSave as any).assetSelection;
   delete (stateToSave as any).draggingKind;
-  delete (stateToSave as any).pages; // Computed property, don't save to avoid stale state
-  
+  delete (stateToSave as any).pickingAspectFor;
+  delete (stateToSave as any).pages;
+
   localStorage.setItem('pdfboop_state', JSON.stringify(stateToSave));
 };
 
@@ -165,17 +142,21 @@ export const loadState = () => {
         delete parsed.selection;
         delete parsed.assetSelection;
         delete parsed.draggingKind;
-        delete parsed.pages; // Always re-evaluate pages from operations
+        delete parsed.pickingAspectFor;
+        delete parsed.pages;
 
-        setState(reconcile({
-          activeTab: 'files',
-          ...parsed,
-          selection: [],
-          assetSelection: [],
-          draggingKind: null,
-          pages: [],
-        }));
-        
+        setState(
+          reconcile({
+            activeTab: 'files',
+            ...parsed,
+            selection: [],
+            assetSelection: [],
+            draggingKind: null,
+            pickingAspectFor: undefined,
+            pages: [],
+          }),
+        );
+
         recalculatePages(); // Compute pages from loaded operations
         checkCacheAvailability();
       } else {
@@ -203,9 +184,10 @@ export const clearWorkspace = async () => {
       selection: [],
       assetSelection: [],
       zoom: 4,
-      workspaceRatio: 1.414,
+      workspaceRatio: Math.SQRT2,
       draggingKind: null,
       activeTab: 'files',
+      pickingAspectFor: undefined,
     }),
   );
   await caches.delete('pdfboop-originals');
@@ -232,10 +214,7 @@ export const checkCacheAvailability = async () => {
 };
 
 export const deleteOriginal = async (id: string) => {
-  setState(
-    'originals',
-    (os) => os.filter((o) => o.id !== id),
-  );
+  setState('originals', (os) => os.filter((o) => o.id !== id));
 
   // Clean up cache
   try {
@@ -256,10 +235,7 @@ export const deleteUnusedOriginals = async () => {
 
   const ids = toDelete.map((o) => o.id);
 
-  setState(
-    'originals',
-    (os) => os.filter((o) => !ids.includes(o.id)),
-  );
+  setState('originals', (os) => os.filter((o) => !ids.includes(o.id)));
 
   // Clean up cache
   try {
@@ -303,9 +279,10 @@ export const resetState = (initial?: Partial<EditorState>) => {
       selection: [],
       assetSelection: [],
       zoom: 4,
-      workspaceRatio: 1.414,
+      workspaceRatio: Math.SQRT2,
       draggingKind: null,
       activeTab: 'files',
+      pickingAspectFor: undefined,
       ...initial,
     }),
   );
@@ -358,10 +335,22 @@ export const deleteSelected = () => {
 };
 
 export const addPageAt = (index: number) => {
-  pushOperation({ type: 'ADD_BLANK', pageId: crypto.randomUUID(), index });
+  const w = 595.28;
+  const h = w * (state.workspaceRatio || Math.SQRT2);
+  pushOperation({
+    type: 'ADD_BLANK',
+    pageId: crypto.randomUUID(),
+    index,
+    originalSize: { width: w, height: h },
+  });
 };
 
-export const reuploadOriginal = async (id: string, blob: Blob, metadata: { name: string; size: number }, pageCount?: number) => {
+export const reuploadOriginal = async (
+  id: string,
+  blob: Blob,
+  metadata: { name: string; size: number },
+  pageCount?: number,
+) => {
   await cacheOriginal(id, blob, true);
 
   setState(
@@ -378,7 +367,7 @@ export const reuploadOriginal = async (id: string, blob: Blob, metadata: { name:
     }),
   );
 
-recalculatePages(); // Trigger re-render of previews
+  recalculatePages(); // Trigger re-render of previews
 };
 
 // Selection helpers
@@ -389,7 +378,7 @@ export const selectPage = (id: string, allIds: string[], multi = false, shift = 
     id,
     allIds.indexOf(id),
     multi,
-    shift
+    shift,
   );
   setState('selection', reconcile(newSelection));
 };
@@ -402,12 +391,57 @@ export const selectAsset = (id: string, allIds: string[], multi = false, shift =
     id,
     allIds.indexOf(id),
     multi,
-    shift
+    shift,
   );
   setState('assetSelection', newSelection);
 };
 
 export const clearAssetSelection = () => setState('assetSelection', []);
+
+export const resizeSelected = (targetSize?: { width: number; height: number }) => {
+  if (state.selection.length === 0) return;
+  if (targetSize) {
+    pushOperation({ type: 'RESIZE', pageIds: [...state.selection], targetSize });
+  }
+};
+
+export const startPickMode = () => {
+  if (state.selection.length === 0) return;
+  setState('pickingAspectFor', [...state.selection]);
+};
+
+export const cancelPickMode = () => {
+  setState('pickingAspectFor', undefined);
+};
+
+export const applyCropSelected = (crop: any) => {
+  if (state.selection.length === 0) return;
+  pushOperation({ type: 'CROP', pageIds: [...state.selection], crop });
+  setState('pickingAspectFor', undefined);
+};
+
+export const selectSameSize = (width: number, height: number) => {
+  const ops = state.operations.slice(0, state.historyIndex);
+  const ids = state.pages
+    .filter((p) => {
+      const geo = resolveGeometry(p.originalSize, ops, p.id);
+      return Math.abs(geo.canvasWidth - width) < 0.1 && Math.abs(geo.canvasHeight - height) < 0.1;
+    })
+    .map((p) => p.id);
+  setState('selection', ids);
+};
+
+export const selectSameAspect = (aspect: number) => {
+  const ops = state.operations.slice(0, state.historyIndex);
+  const ids = state.pages
+    .filter((p) => {
+      const geo = resolveGeometry(p.originalSize, ops, p.id);
+      const a = geo.canvasHeight / geo.canvasWidth;
+      return Math.abs(a - aspect) < 0.001;
+    })
+    .map((p) => p.id);
+  setState('selection', ids);
+};
 
 export const deleteSelectedAssets = (assets: Asset[]) => {
   const byOriginal: Record<string, string[]> = {};
@@ -513,7 +547,11 @@ if (typeof window !== 'undefined') {
     }
   });
 
-  window.addEventListener('drop', () => {
-    setState('draggingKind', null);
-  }, { capture: true });
+  window.addEventListener(
+    'drop',
+    () => {
+      setState('draggingKind', null);
+    },
+    { capture: true },
+  );
 }

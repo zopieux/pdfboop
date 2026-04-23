@@ -1,10 +1,10 @@
-import { Component, For, Show, createMemo } from 'solid-js';
 import { styled } from '@macaron-css/solid';
-import { Trash2, Maximize, Scissors } from 'lucide-solid';
-import { state, selectAsset, deleteSelectedAssets, setAssetQuality, setAssetScale } from '../state';
+import { Trash2 } from 'lucide-solid';
+import { type Component, createMemo, For, Show } from 'solid-js';
+import { workspaceAssets } from '../resources';
+import { deleteSelectedAssets, selectAsset, setAssetQuality, setAssetScale, state } from '../state';
 import { vars } from '../theme';
 import { Button } from './ui/Button';
-import { workspaceAssets } from '../resources';
 
 const Root = styled('div', {
   base: {
@@ -172,7 +172,9 @@ const EmptyState = styled('p', {
 export const AssetsTab: Component = () => {
   const assets = workspaceAssets;
 
-  const filteredAssets = createMemo(() => assets()?.filter((a) => a.width > 1 || a.height > 1) || []);
+  const filteredAssets = createMemo(
+    () => assets()?.filter((a) => a.width > 1 || a.height > 1) || [],
+  );
 
   const selectedAssets = createMemo(() => {
     const list = assets() || [];
@@ -181,7 +183,7 @@ export const AssetsTab: Component = () => {
   });
 
   const handleAssetClick = (e: MouseEvent, id: string) => {
-    const allIds = filteredAssets().map(a => a.id);
+    const allIds = filteredAssets().map((a) => a.id);
     selectAsset(id, allIds, e.ctrlKey || e.metaKey, e.shiftKey);
   };
 
@@ -214,14 +216,14 @@ export const AssetsTab: Component = () => {
   };
 
   const handleQualityInput = (e: InputEvent & { currentTarget: HTMLInputElement }) => {
-    const q = parseInt(e.currentTarget.value);
+    const q = parseInt(e.currentTarget.value, 10);
     for (const a of selectedAssets()) {
       setAssetQuality(a.originalId, a.ref, q);
     }
   };
 
   const handleScaleInput = (e: InputEvent & { currentTarget: HTMLInputElement }) => {
-    const s = parseInt(e.currentTarget.value) / 100;
+    const s = parseInt(e.currentTarget.value, 10) / 100;
     for (const a of selectedAssets()) {
       setAssetScale(a.originalId, a.ref, s);
     }
@@ -238,11 +240,11 @@ export const AssetsTab: Component = () => {
   };
 
   const handleWidthChange = (e: Event & { currentTarget: HTMLInputElement }) => {
-    updateDimension(parseInt(e.currentTarget.value) || 0, 'width');
+    updateDimension(parseInt(e.currentTarget.value, 10) || 0, 'width');
   };
 
   const handleHeightChange = (e: Event & { currentTarget: HTMLInputElement }) => {
-    updateDimension(parseInt(e.currentTarget.value) || 0, 'height');
+    updateDimension(parseInt(e.currentTarget.value, 10) || 0, 'height');
   };
 
   const onReset = () => {

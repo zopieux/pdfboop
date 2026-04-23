@@ -1,11 +1,11 @@
-import { Component, createSignal, For, Show, createMemo } from 'solid-js';
 import { styled } from '@macaron-css/solid';
-import { Files, AlertTriangle, RefreshCw, Trash2 } from 'lucide-solid';
-import { state, deleteOriginal, deleteUnusedOriginals } from '../state';
+import { AlertTriangle, RefreshCw, Trash2 } from 'lucide-solid';
+import { type Component, createMemo, createSignal, For, Show } from 'solid-js';
 import { handleReupload } from '../lib/inputs';
+import { deleteOriginal, deleteUnusedOriginals, state } from '../state';
 import { vars } from '../theme';
+import type { OriginalFile } from '../types';
 import { Button } from './ui/Button';
-import { OriginalFile } from '../types';
 
 const FileCard = styled('div', {
   base: {
@@ -180,7 +180,7 @@ const formatSize = (bytes: number) => {
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  return `${parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
 };
 
 const OriginalItem: Component<{ file: OriginalFile }> = (props) => {
@@ -248,10 +248,7 @@ const OriginalItem: Component<{ file: OriginalFile }> = (props) => {
               This cannot be undone. Removes {pagesToDelete()} pages.
             </ConfirmMessage>
             <div style={{ display: 'flex', gap: '4px' }}>
-              <ConfirmButton
-                intent="confirm"
-                onClick={() => deleteOriginal(props.file.id)}
-              >
+              <ConfirmButton intent="confirm" onClick={() => deleteOriginal(props.file.id)}>
                 Confirm
               </ConfirmButton>
               <ConfirmButton intent="cancel" onClick={() => setIsConfirming(false)}>

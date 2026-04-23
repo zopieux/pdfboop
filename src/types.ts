@@ -1,14 +1,17 @@
-export type PageOperation = {
-  rotation: number; // 0, 90, 180, 270
-  flipH: boolean;
-  flipV: boolean;
+export type PageSize = { width: number; height: number };
+
+export type PageCrop = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 export type Page = {
   id: string;
   originalId: string;
   originalPageIndex: number; // 0-based index in the original file
-  ops: PageOperation;
+  originalSize: PageSize; // set at creation, immutable
 };
 
 export interface DiscoveredAsset {
@@ -32,6 +35,7 @@ export type OriginalFile = {
   color: string;
   evicted: boolean;
   pageRatios: number[];
+  pageSizes: { width: number; height: number }[];
   version: number;
   assets: DiscoveredAsset[];
   assetUsage: Record<number, string[]>; // pageIndex -> array of refs
@@ -41,7 +45,7 @@ export type OriginalFile = {
 
 export type AbstractOperation =
   | { type: 'APPEND_ORIGINAL'; originalId: string; instanceId: string }
-  | { type: 'ADD_BLANK'; pageId: string; index: number }
+  | { type: 'ADD_BLANK'; pageId: string; index: number; originalSize: PageSize }
   | { type: 'DELETE'; pageIds: string[] }
   | { type: 'MOVE'; pageIds: string[]; targetIndex: number }
   | {
@@ -55,7 +59,9 @@ export type AbstractOperation =
       imageRefs: string[];
       newBlobIds: string[]; // 1:1 with imageRefs or 1:Many
     }
-  | { type: 'DELETE_IMAGE'; originalId: string; imageRefs: string[] };
+  | { type: 'DELETE_IMAGE'; originalId: string; imageRefs: string[] }
+  | { type: 'RESIZE'; pageIds: string[]; targetSize?: PageSize }
+  | { type: 'CROP'; pageIds: string[]; crop?: PageCrop };
 
 export type EditorState = {
   originals: OriginalFile[];
@@ -68,4 +74,5 @@ export type EditorState = {
   workspaceRatio: number; // height / width
   draggingKind: 'pdf' | 'image' | 'file' | null;
   activeTab: 'files' | 'assets';
+  pickingAspectFor?: string[]; // IDs of pages we are matching for
 };

@@ -379,6 +379,29 @@ describe('Resizing logic', () => {
     expect(geo3.canvasHeight).toBeCloseTo(300);
   });
 
+  it('handles reset size via resizeSelected(undefined)', () => {
+    setState('selection', ['inst_p0']);
+    resizeSelected({ width: 200, height: 300 });
+    expect(geoOf(0).canvasWidth).toBeCloseTo(200);
+
+    resizeSelected(undefined);
+    expect(geoOf(0).canvasWidth).toBeCloseTo(100);
+    expect(geoOf(0).canvasHeight).toBeCloseTo(141.4);
+  });
+
+  it('handles reset size with rotation', () => {
+    setState('selection', ['inst_p0']);
+    rotateCWSelected();
+    expect(geoOf(0).canvasWidth).toBeCloseTo(141.4);
+
+    resizeSelected({ width: 200, height: 300 });
+    expect(geoOf(0).canvasWidth).toBeCloseTo(200);
+
+    resizeSelected(undefined);
+    expect(geoOf(0).canvasWidth).toBeCloseTo(141.4);
+    expect(geoOf(0).canvasHeight).toBeCloseTo(100);
+  });
+
   it('handles multiple page resizing at once', () => {
     setState('selection', ['inst_p0', 'inst_p1']);
     resizeSelected({ width: 50, height: 50 });

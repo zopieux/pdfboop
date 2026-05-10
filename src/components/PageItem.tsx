@@ -14,7 +14,7 @@ import { handleReupload } from '../lib/inputs';
 import { renderPreview } from '../lib/previews';
 import { addPageAt, pushOperation, selectPage, state } from '../state';
 import { vars } from '../theme';
-import type { Page } from '../types';
+import type { Page, PageSize } from '../types';
 import { MatchAspectModal } from './MatchAspectModal';
 import { Button } from './ui/Button';
 
@@ -180,7 +180,7 @@ const FooterInfo = styled('div', {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
-    fontSize: '10px',
+    fontSize: '11px',
     fontWeight: 600,
     padding: '0 8px',
     width: '100%',
@@ -328,7 +328,9 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
   };
 
   const handleAddAt = (index: number) => {
-    addPageAt(index);
+    const ops = state.operations.slice(0, state.historyIndex);
+    const geo = resolveGeometry(props.page.originalSize, ops, props.page.id);
+    addPageAt(index, { width: geo.canvasWidth, height: geo.canvasHeight });
   };
 
   const handleMove = (direction: -1 | 1) => {
@@ -363,7 +365,7 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
         alert(`Mismatch: This page requires a ${original()?.type.toUpperCase()} file.`);
         return;
       }
-      await handleReupload(original()?.id, file);
+      await handleReupload(original()!.id, file);
     }
   };
 
@@ -375,7 +377,7 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
     const target = e.target as HTMLInputElement;
     const file = target.files?.[0];
     if (file && original()) {
-      await handleReupload(original()?.id, file);
+      await handleReupload(original()!.id, file);
     }
   };
 
@@ -495,7 +497,7 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
                 e.stopPropagation();
                 handlePick();
               }}
-              style={{ 'font-size': '11px', padding: '4px 8px' }}
+              size="sm"
             >
               <RefreshCw size={12} style={{ 'margin-right': '4px' }} /> Pick original
             </Button>

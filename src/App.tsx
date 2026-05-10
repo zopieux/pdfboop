@@ -3,7 +3,15 @@ import { type Component, onMount } from 'solid-js';
 import { SidePane } from './components/SidePane';
 import { TopBar } from './components/TopBar';
 import { Workspace } from './components/Workspace';
-import { deleteSelected, loadState, moveSelection, redo, saveState, undo } from './state';
+import {
+  deleteSelected,
+  loadState,
+  moveSelection,
+  redo,
+  saveState,
+  selectAllPages,
+  undo,
+} from './state';
 import { themeClass } from './theme';
 
 const AppContainer = styled('div', {
@@ -44,6 +52,10 @@ const App: Component = () => {
       if (e.key === 'Delete') {
         e.preventDefault();
         deleteSelected();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        selectAllPages();
       }
     };
     window.addEventListener('keydown', handleKey);

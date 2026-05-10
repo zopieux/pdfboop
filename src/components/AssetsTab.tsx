@@ -5,6 +5,8 @@ import { workspaceAssets } from '../resources';
 import { deleteSelectedAssets, selectAsset, setAssetQuality, setAssetScale, state } from '../state';
 import { vars } from '../theme';
 import { Button } from './ui/Button';
+import { ButtonGroup } from './ui/ButtonGroup';
+import { InfoMessage } from './ui/InfoMessage';
 
 const Root = styled('div', {
   base: {
@@ -101,7 +103,7 @@ const FloatingControls = styled('div', {
 
 const SelectionCount = styled('div', {
   base: {
-    fontSize: '12px',
+    fontSize: '13px',
     fontWeight: 600,
     color: vars.colors.text,
   },
@@ -148,24 +150,6 @@ const NumberInput = styled('input', {
       borderColor: vars.colors.primary,
       outline: 'none',
     },
-  },
-});
-
-const ButtonRow = styled('div', {
-  base: {
-    display: 'flex',
-    gap: vars.gaps.sm,
-    marginTop: vars.gaps.sm,
-  },
-});
-
-const EmptyState = styled('p', {
-  base: {
-    textAlign: 'center',
-    opacity: 0.5,
-    fontSize: '12px',
-    marginTop: '40px',
-    color: vars.colors.text,
   },
 });
 
@@ -265,7 +249,7 @@ export const AssetsTab: Component = () => {
       <TabContent>
         <Show
           when={filteredAssets().length > 0}
-          fallback={<EmptyState>No images found in workspace.</EmptyState>}
+          fallback={<InfoMessage>No images found in workspace</InfoMessage>}
         >
           <AssetGrid>
             <For each={filteredAssets()}>
@@ -321,27 +305,18 @@ export const AssetsTab: Component = () => {
               <NumberInput type="number" value={currentW()} onChange={handleWidthChange} />
               <span style={{ opacity: 0.5 }}>×</span>
               <NumberInput type="number" value={currentH()} onChange={handleHeightChange} />
-              <span style={{ 'font-size': '10px', opacity: 0.5, 'margin-left': 'auto' }}>px</span>
+              <span style={{ 'font-size': '11px', opacity: 0.5, 'margin-left': 'auto' }}>px</span>
             </DimensionRow>
           </ControlGroup>
 
-          <ButtonRow>
-            <Button
-              variant="secondary"
-              onClick={onReset}
-              style={{ width: '100%', padding: '4px', 'font-size': '11px' }}
-            >
+          <ButtonGroup size="small">
+            <Button variant="secondary" onClick={onReset}>
               Reset
             </Button>
-            <Button
-              variant="danger"
-              onClick={onDelete}
-              style={{ width: '100%', padding: '4px', 'font-size': '11px' }}
-            >
-              <Trash2 size={14} style={{ display: 'inline', 'margin-right': '4px' }} />
-              Delete
+            <Button variant="danger" onClick={onDelete}>
+              <Trash2 size={14} /> Delete
             </Button>
-          </ButtonRow>
+          </ButtonGroup>
         </FloatingControls>
       </Show>
     </Root>

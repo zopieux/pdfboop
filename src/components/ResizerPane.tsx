@@ -1,19 +1,9 @@
 import { styled } from '@macaron-css/solid';
-import {
-  ChevronDown,
-  ChevronUp,
-  Crop,
-  Files,
-  Link,
-  Maximize,
-  RefreshCw,
-  Scissors,
-  Unlink,
-} from 'lucide-solid';
-import { type Component, createMemo, createSignal, Show } from 'solid-js';
+import { Crop, Files, Link, Maximize2, Minimize2, RefreshCw, Scissors, Unlink } from 'lucide-solid';
+import { type Component, createEffect, createMemo, createSignal, Show } from 'solid-js';
 
-const Grow = ChevronUp;
-const Shrink = ChevronDown;
+const Grow = Maximize2;
+const Shrink = Minimize2;
 const Layers = Files;
 const AspectRatio = Scissors;
 
@@ -34,43 +24,36 @@ import { vars } from '../theme';
 import type { Anchor, Page } from '../types';
 import { AnchorIcon } from './ui/AnchorIcon';
 import { Button } from './ui/Button';
+import { ButtonGroup } from './ui/ButtonGroup';
+import { InfoMessage } from './ui/InfoMessage';
 
 const Container = styled('div', {
   base: {
-    height: '100%',
     display: 'flex',
     flexDirection: 'column',
     borderTop: `1px solid ${vars.colors.border}`,
     background: vars.colors.surface,
     color: vars.colors.text,
+    padding: 0,
+    gap: 0,
+    fontSize: '13px',
+    minHeight: '180px',
+    maxHeight: '50%',
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+});
+
+import { TabList, TabTitle } from './ui/Tabs';
+
+const Content = styled('div', {
+  base: {
+    display: 'flex',
+    flexDirection: 'column',
     padding: vars.gaps.md,
     gap: vars.gaps.sm,
-    fontSize: '13px',
-  },
-});
-
-const Title = styled('div', {
-  base: {
-    fontWeight: 600,
-    marginBottom: vars.gaps.xs,
-    color: vars.colors.text,
-    opacity: 0.8,
-    display: 'flex',
-    alignItems: 'center',
-    gap: vars.gaps.xs,
-  },
-});
-
-const EmptyState = styled('div', {
-  base: {
     flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    textAlign: 'center',
-    opacity: 0.5,
-    fontStyle: 'italic',
-    color: vars.colors.text,
+    overflowY: 'auto',
   },
 });
 
@@ -93,7 +76,7 @@ const InputWrapper = styled('div', {
 
 const Label = styled('label', {
   base: {
-    fontSize: '10px',
+    fontSize: '11px',
     fontWeight: 600,
     textTransform: 'uppercase',
     opacity: 0.6,
@@ -116,15 +99,6 @@ const StyledInput = styled('input', {
   },
 });
 
-const ActionGroup = styled('div', {
-  base: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: vars.gaps.sm,
-    marginTop: vars.gaps.xs,
-  },
-});
-
 const StyledSelect = styled('select', {
   base: {
     flex: 1,
@@ -142,11 +116,11 @@ const StyledSelect = styled('select', {
 });
 
 const WELL_KNOWN_SIZES = [
-  { name: 'ISO (A4, etc.)', ratio: Math.SQRT2 },
+  { name: 'ISO A (A4)', ratio: Math.SQRT2 },
   { name: 'US Letter', ratio: 11 / 8.5 },
   { name: 'US Legal', ratio: 14 / 8.5 },
   { name: 'Tabloid', ratio: 17 / 11 },
-  { name: 'Square', ratio: 1 },
+  { name: 'Square (1:1)', ratio: 1 },
   { name: '16:9', ratio: 16 / 9 },
   { name: '4:3', ratio: 4 / 3 },
   { name: '21:9', ratio: 21 / 9 },
@@ -163,6 +137,81 @@ const ANCHORS: Anchor[] = [
   'bottom',
   'bottom-right',
 ];
+
+const AspectList = styled('div', {
+  base: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: vars.gaps.xs,
+    overflowY: 'auto',
+    flex: 1,
+    marginTop: vars.gaps.xs,
+  },
+});
+
+const AspectRow = styled('div', {
+  base: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: vars.gaps.sm,
+    padding: vars.gaps.xs,
+    background: vars.colors.bg,
+    borderRadius: '4px',
+    border: `1px solid ${vars.colors.border}`,
+  },
+});
+
+const Section = styled('div', {
+  base: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: vars.gaps.sm,
+  },
+  variants: {
+    fill: {
+      true: {
+        flex: 1,
+        overflow: 'hidden',
+      },
+    },
+  },
+});
+
+const Hint = styled('div', {
+  base: {
+    opacity: 0.8,
+    fontSize: '12px',
+    lineHeight: '1.4',
+  },
+});
+
+import { renderPreview } from '../lib/previews';
+
+const TinyPagePreview: Component<{ page: Page }> = (props) => {
+  const [canvas, setCanvas] = createSignal<HTMLCanvasElement>();
+
+  createEffect(() => {
+    const c = canvas();
+    if (c) {
+      renderPreview(props.page, c, 32);
+    }
+  });
+
+  return (
+    <canvas
+      ref={setCanvas}
+      style={{
+        width: '32px',
+        height: '40px',
+        'object-fit': 'contain',
+        background: '#fff',
+        border: `1px solid ${vars.colors.border}`,
+        'border-radius': '2px',
+        'flex-shrink': 0,
+      }}
+    />
+  );
+};
 
 export const ResizerPane: Component = () => {
   const selectedPages = createMemo(() => state.pages.filter((p) => state.selection.includes(p.id)));
@@ -186,8 +235,10 @@ export const ResizerPane: Component = () => {
     const firstSize = getPageSize(pages[0]);
     const firstAspect = firstSize.height / firstSize.width;
 
-    for (let i = 1; i < pages.length; i++) {
-      const size = getPageSize(pages[i]);
+    const uniqueAspectsMap = new Map<string, { firstPage: Page; aspect: number }>();
+
+    pages.forEach((p) => {
+      const size = getPageSize(p);
       const aspect = size.height / size.width;
 
       if (
@@ -199,7 +250,12 @@ export const ResizerPane: Component = () => {
       if (Math.abs(aspect - firstAspect) > 0.001) {
         allSameAspect = false;
       }
-    }
+
+      const aspectKey = aspect.toFixed(3);
+      if (!uniqueAspectsMap.has(aspectKey)) {
+        uniqueAspectsMap.set(aspectKey, { firstPage: p, aspect });
+      }
+    });
 
     return {
       allSameSize,
@@ -208,8 +264,16 @@ export const ResizerPane: Component = () => {
       height: firstSize.height,
       aspect: firstAspect,
       pages,
+      uniqueAspects: Array.from(uniqueAspectsMap.values()),
     };
   });
+
+  const getAspectName = (aspect: number) => {
+    const match = WELL_KNOWN_SIZES.find(
+      (s) => Math.abs(s.ratio - aspect) < 0.005 || Math.abs(s.ratio - 1 / aspect) < 0.005,
+    );
+    return match ? match.name : aspect.toFixed(2);
+  };
 
   const [localW, setLocalW] = createSignal<string>('');
   const [localH, setLocalH] = createSignal<string>('');
@@ -310,213 +374,248 @@ export const ResizerPane: Component = () => {
     setResizerAnchor(ANCHORS[nextIdx]);
   };
 
+  const AnchorButton: Component = () => (
+    <Button
+      onClick={() => cycleAnchor(1)}
+      onContextMenu={(e: any) => {
+        e.preventDefault();
+        cycleAnchor(-1);
+      }}
+      onWheel={(e: any) => {
+        e.preventDefault();
+        cycleAnchor(e.deltaY > 0 ? 1 : -1);
+      }}
+      style={{ width: '36px', padding: '2px' }}
+      title={`Anchor: ${state.resizerAnchor} (Click/Wheel to cycle)`}
+    >
+      <AnchorIcon anchor={state.resizerAnchor} />
+    </Button>
+  );
+
+  const ModeButton: Component = () => (
+    <Button
+      onClick={() => setResizerMode(state.resizerMode === 'crop' ? 'pad' : 'crop')}
+      style={{ width: '80px' }}
+      title={state.resizerMode === 'crop' ? 'Switch to Pad' : 'Switch to Crop'}
+    >
+      <Show when={state.resizerMode === 'crop'} fallback={<Maximize2 size={14} />}>
+        <Crop size={14} />
+      </Show>
+      {state.resizerMode === 'crop' ? 'Crop' : 'Pad'}
+    </Button>
+  );
+
   return (
     <Container>
-      <Title>
-        <Show when={state.pickingAspectFor} fallback="Resizing Options">
-          Pick target page...
+      <TabList>
+        <TabTitle>
+          <Show
+            when={state.pickingAspectFor}
+            fallback={
+              <>
+                <AspectRatio size={16} /> Resizing & cropping
+              </>
+            }
+          >
+            Pick target page...
+          </Show>
+        </TabTitle>
+      </TabList>
+
+      <Content>
+        <Show when={state.pickingAspectFor}>
+          <InfoMessage>
+            <div>
+              Select a page in the workspace that has the target aspect ratio and dimensions you
+              want to match.
+            </div>
+            <ButtonGroup>
+              <Button onClick={cancelPickMode}>Cancel pick</Button>
+            </ButtonGroup>
+          </InfoMessage>
         </Show>
-      </Title>
 
-      <Show when={state.pickingAspectFor}>
-        <div style={{ display: 'flex', 'flex-direction': 'column', gap: vars.gaps.md }}>
-          <div style={{ opacity: 0.8, 'line-height': 1.4 }}>
-            Select a page in the workspace that has the target aspect ratio and dimensions you want
-            to match.
-          </div>
-          <Button onClick={cancelPickMode} style={{ 'justify-content': 'center' }}>
-            Cancel pick
-          </Button>
-        </div>
-      </Show>
-
-      <Show when={!state.pickingAspectFor}>
-        <Show
-          when={analysis()}
-          fallback={<EmptyState>Select some pages for resizing options</EmptyState>}
-        >
-          {(a) => (
-            <Show
-              when={a().allSameSize}
-              fallback={
+        <Show when={!state.pickingAspectFor}>
+          <Show
+            when={analysis()}
+            fallback={<InfoMessage>Select some pages for resizing options</InfoMessage>}
+          >
+            {(a) => (
+              <Section fill>
                 <Show
-                  when={a().allSameAspect}
+                  when={a().allSameSize}
                   fallback={
-                    <div style={{ opacity: 0.7, 'line-height': 1.4 }}>
-                      Selection contains multiple sizes and aspect ratios. Select only pages with
-                      the same size or aspect ratio to enable resizing tools.
-                    </div>
+                    <Show
+                      when={a().allSameAspect}
+                      fallback={
+                        <Section fill>
+                          <div
+                            style={{
+                              display: 'flex',
+                              'flex-direction': 'column',
+                              gap: vars.gaps.xs,
+                            }}
+                          >
+                            <Hint>
+                              Your selection contains <strong>{a().uniqueAspects.length}</strong>{' '}
+                              distinct aspect ratios. Pick one to{' '}
+                              <strong>{state.resizerAnchor.replace('-', ' ')}</strong>{' '}
+                              <strong>{state.resizerMode}</strong> the others to match.
+                            </Hint>
+                            <div
+                              style={{
+                                display: 'flex',
+                                'justify-content': 'flex-end',
+                                gap: vars.gaps.sm,
+                              }}
+                            >
+                              <AnchorButton />
+                              <ModeButton />
+                            </div>
+                          </div>
+                          <AspectList>
+                            {a().uniqueAspects.map((ua) => (
+                              <AspectRow>
+                                <TinyPagePreview page={ua.firstPage} />
+                                <div style={{ flex: 1, 'font-weight': 500 }}>
+                                  {getAspectName(ua.aspect)}
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="primary"
+                                  onClick={() => resizeSelectedToRatio(ua.aspect)}
+                                >
+                                  Pick
+                                </Button>
+                              </AspectRow>
+                            ))}
+                          </AspectList>
+                        </Section>
+                      }
+                    >
+                      <Section>
+                        <Hint>Selection has same aspect ratio, but different sizes.</Hint>
+                        <ButtonGroup>
+                          <Button onClick={resizeToSmallest}>
+                            <Shrink size={14} /> Shrink to smallest
+                          </Button>
+                          <Button onClick={resizeToLargest}>
+                            <Grow size={14} /> Enlarge to largest
+                          </Button>
+                        </ButtonGroup>
+                        <ButtonGroup>
+                          <Button onClick={() => selectSameAspect(a().aspect)}>
+                            <AspectRatio size={14} /> Select all with same aspect
+                          </Button>
+                        </ButtonGroup>
+                      </Section>
+                    </Show>
                   }
                 >
-                  <div style={{ display: 'flex', 'flex-direction': 'column', gap: vars.gaps.sm }}>
-                    <div style={{ opacity: 0.8 }}>
-                      Selection has same aspect ratio, but different sizes.
-                    </div>
-                    <ActionGroup>
-                      <Button onClick={resizeToSmallest} style={{ flex: 1 }}>
-                        <Shrink size={14} /> Resize to smallest
+                  <Section>
+                    <InputGroup>
+                      <InputWrapper>
+                        <Label>Width (pt)</Label>
+                        <StyledInput
+                          type="text"
+                          value={localW()}
+                          onInput={(e: any) => setLocalW(e.currentTarget.value)}
+                          onBlur={(e: any) => handleWidthChange(e.currentTarget.value)}
+                          onKeyDown={(e: any) =>
+                            e.key === 'Enter' && handleWidthChange(e.currentTarget.value)
+                          }
+                        />
+                      </InputWrapper>
+                      <Button
+                        onClick={() => setResizerLinked(!state.resizerLinked)}
+                        style={{
+                          width: '32px',
+                          padding: '4px',
+                          'justify-content': 'center',
+                          'margin-top': '14px',
+                          border: 'none',
+                          background: 'none',
+                          opacity: state.resizerLinked ? 1 : 0.5,
+                        }}
+                        title={state.resizerLinked ? 'Unlink dimensions' : 'Link dimensions'}
+                      >
+                        <Show when={state.resizerLinked} fallback={<Unlink size={16} />}>
+                          <Link size={16} />
+                        </Show>
                       </Button>
-                      <Button onClick={resizeToLargest} style={{ flex: 1 }}>
-                        <Grow size={14} /> Resize to largest
+                      <InputWrapper>
+                        <Label>Height (pt)</Label>
+                        <StyledInput
+                          type="text"
+                          value={localH()}
+                          onInput={(e: any) => setLocalH(e.currentTarget.value)}
+                          onBlur={(e: any) => handleHeightChange(e.currentTarget.value)}
+                          onKeyDown={(e: any) =>
+                            e.key === 'Enter' && handleHeightChange(e.currentTarget.value)
+                          }
+                        />
+                      </InputWrapper>
+                    </InputGroup>
+
+                    <InputGroup>
+                      <StyledSelect
+                        value={(() => {
+                          const a = analysis();
+                          if (!a) return 'custom';
+                          const match = WELL_KNOWN_SIZES.find(
+                            (s) =>
+                              Math.abs(s.ratio - a.aspect) < 0.005 ||
+                              Math.abs(s.ratio - 1 / a.aspect) < 0.005,
+                          );
+                          return match ? match.name : 'custom';
+                        })()}
+                        onChange={(e: any) => {
+                          const val = e.currentTarget.value;
+                          if (val === 'custom') {
+                            setResizerLinked(false);
+                            return;
+                          }
+                          const size = WELL_KNOWN_SIZES.find((s) => s.name === val);
+                          if (size) {
+                            resizeSelectedToRatio(size.ratio);
+                          }
+                        }}
+                      >
+                        <option value="custom">Custom</option>
+                        {WELL_KNOWN_SIZES.map((s) => (
+                          <option value={s.name}>{s.name}</option>
+                        ))}
+                      </StyledSelect>
+                      <AnchorButton />
+                      <ModeButton />
+                    </InputGroup>
+
+                    <ButtonGroup>
+                      <Button onClick={handleReset}>
+                        <RefreshCw size={14} /> Reset size
                       </Button>
-                    </ActionGroup>
-                    <Button
-                      onClick={() => selectSameAspect(a().aspect)}
-                      style={{ 'justify-content': 'center' }}
-                    >
-                      <AspectRatio size={14} /> Select all with same aspect
-                    </Button>
-                    <Button
-                      variant="primary"
-                      onClick={startPickMode}
-                      style={{ 'justify-content': 'center', 'margin-top': vars.gaps.xs }}
-                    >
-                      <AspectRatio size={14} /> Match aspect...
-                    </Button>
-                  </div>
+                    </ButtonGroup>
+
+                    <ButtonGroup>
+                      <Button onClick={() => selectSameSize(a().width, a().height)}>
+                        <Layers size={14} /> Select same size
+                      </Button>
+                      <Button onClick={() => selectSameAspect(a().aspect)}>
+                        <AspectRatio size={14} /> Select same aspect
+                      </Button>
+                    </ButtonGroup>
+                    <ButtonGroup>
+                      <Button variant="primary" onClick={startPickMode}>
+                        <AspectRatio size={14} /> Match aspect...
+                      </Button>
+                    </ButtonGroup>
+                  </Section>
                 </Show>
-              }
-            >
-              <div style={{ display: 'flex', 'flex-direction': 'column', gap: vars.gaps.sm }}>
-                <InputGroup>
-                  <InputWrapper>
-                    <Label>Width (pt)</Label>
-                    <StyledInput
-                      type="text"
-                      value={localW()}
-                      onInput={(e: any) => setLocalW(e.currentTarget.value)}
-                      onBlur={(e: any) => handleWidthChange(e.currentTarget.value)}
-                      onKeyDown={(e: any) =>
-                        e.key === 'Enter' && handleWidthChange(e.currentTarget.value)
-                      }
-                    />
-                  </InputWrapper>
-                  <Button
-                    onClick={() => setResizerLinked(!state.resizerLinked)}
-                    style={{
-                      width: '32px',
-                      padding: '4px',
-                      'justify-content': 'center',
-                      'margin-top': '14px',
-                      border: 'none',
-                      background: 'none',
-                      opacity: state.resizerLinked ? 1 : 0.5,
-                    }}
-                    title={state.resizerLinked ? 'Unlink dimensions' : 'Link dimensions'}
-                  >
-                    <Show when={state.resizerLinked} fallback={<Unlink size={16} />}>
-                      <Link size={16} />
-                    </Show>
-                  </Button>
-                  <InputWrapper>
-                    <Label>Height (pt)</Label>
-                    <StyledInput
-                      type="text"
-                      value={localH()}
-                      onInput={(e: any) => setLocalH(e.currentTarget.value)}
-                      onBlur={(e: any) => handleHeightChange(e.currentTarget.value)}
-                      onKeyDown={(e: any) =>
-                        e.key === 'Enter' && handleHeightChange(e.currentTarget.value)
-                      }
-                    />
-                  </InputWrapper>
-                </InputGroup>
-
-                <InputGroup>
-                  <StyledSelect
-                    value={(() => {
-                      const a = analysis();
-                      if (!a) return 'custom';
-                      const match = WELL_KNOWN_SIZES.find(
-                        (s) =>
-                          Math.abs(s.ratio - a.aspect) < 0.005 ||
-                          Math.abs(s.ratio - 1 / a.aspect) < 0.005,
-                      );
-                      return match ? match.name : 'custom';
-                    })()}
-                    onChange={(e: any) => {
-                      const val = e.currentTarget.value;
-                      if (val === 'custom') {
-                        setResizerLinked(false);
-                        return;
-                      }
-                      const size = WELL_KNOWN_SIZES.find((s) => s.name === val);
-                      if (size) {
-                        resizeSelectedToRatio(size.ratio);
-                      }
-                    }}
-                  >
-                    <option value="custom">Custom</option>
-                    {WELL_KNOWN_SIZES.map((s) => (
-                      <option value={s.name}>{s.name}</option>
-                    ))}
-                  </StyledSelect>
-                  <Button
-                    onClick={() => cycleAnchor(1)}
-                    onContextMenu={(e: any) => {
-                      e.preventDefault();
-                      cycleAnchor(-1);
-                    }}
-                    onWheel={(e: any) => {
-                      e.preventDefault();
-                      cycleAnchor(e.deltaY > 0 ? 1 : -1);
-                    }}
-                    style={{
-                      width: '36px',
-                      padding: '2px',
-                      'justify-content': 'center',
-                    }}
-                    title={`Anchor: ${state.resizerAnchor} (Click/Wheel to cycle)`}
-                  >
-                    <AnchorIcon anchor={state.resizerAnchor} />
-                  </Button>
-                  <Button
-                    onClick={() => setResizerMode(state.resizerMode === 'crop' ? 'pad' : 'crop')}
-                    style={{
-                      width: '80px',
-                      'justify-content': 'center',
-                    }}
-                    title={state.resizerMode === 'crop' ? 'Switch to Pad' : 'Switch to Crop'}
-                  >
-                    <Show when={state.resizerMode === 'crop'} fallback={<Maximize size={14} />}>
-                      <Crop size={14} />
-                    </Show>
-                    {state.resizerMode === 'crop' ? 'Crop' : 'Pad'}
-                  </Button>
-                </InputGroup>
-
-                <ActionGroup>
-                  <Button onClick={handleReset} style={{ flex: 1, 'justify-content': 'center' }}>
-                    <RefreshCw size={14} /> Reset size
-                  </Button>
-                </ActionGroup>
-
-                <ActionGroup>
-                  <Button
-                    onClick={() => selectSameSize(a().width, a().height)}
-                    style={{ flex: 1, 'justify-content': 'center' }}
-                  >
-                    <Layers size={14} /> Select same size
-                  </Button>
-                  <Button
-                    onClick={() => selectSameAspect(a().aspect)}
-                    style={{ flex: 1, 'justify-content': 'center' }}
-                  >
-                    <AspectRatio size={14} /> Select same aspect
-                  </Button>
-                </ActionGroup>
-                <Button
-                  variant="primary"
-                  onClick={startPickMode}
-                  style={{ 'justify-content': 'center', 'margin-top': vars.gaps.xs }}
-                >
-                  <AspectRatio size={14} /> Match aspect...
-                </Button>
-              </div>
-            </Show>
-          )}
+              </Section>
+            )}
+          </Show>
         </Show>
-      </Show>
+      </Content>
     </Container>
   );
 };

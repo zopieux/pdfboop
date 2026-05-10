@@ -234,7 +234,6 @@ describe('PDF Manipulation (Real Files)', () => {
           originalSize: { width: 595.28, height: 595.28 },
         },
       ],
-      workspaceRatio: 1.0, // Square page for testing
     });
 
     const resultBytes = await generateProjectPdf();

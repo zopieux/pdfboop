@@ -74,6 +74,9 @@ export function resolveGeometry(
   let fh = false,
     fv = false;
 
+  let nw = originalSize.width;
+  let nh = originalSize.height;
+
   for (const op of ops) {
     // Filter: only ops that target this page
     const targets = (op as any).pageIds as string[] | undefined;
@@ -88,16 +91,21 @@ export function resolveGeometry(
           const oldW = width;
           width = height;
           height = oldW;
+
+          const oldNW = nw;
+          nw = nh;
+          nh = oldNW;
+
           // Content box in new paper coordinates (90° CW):
           // newX = newPaperW - (oldY + oldH), newY = oldX
           const nx = width - (cy + ch);
           const ny = cx;
-          const nw = ch;
-          const nh = cw;
+          const nw_ = ch;
+          const nh_ = cw;
           cx = nx;
           cy = ny;
-          cw = nw;
-          ch = nh;
+          cw = nw_;
+          ch = nh_;
         } else if (op.operation === 'flipH') {
           fh = !fh;
           cx = width - (cx + cw);
@@ -180,6 +188,15 @@ export function resolveGeometry(
         cy -= op.crop.y;
         width = op.crop.width;
         height = op.crop.height;
+        break;
+      }
+      case 'RESET_GEOMETRY': {
+        width = nw;
+        height = nh;
+        cx = 0;
+        cy = 0;
+        cw = nw;
+        ch = nh;
         break;
       }
     }

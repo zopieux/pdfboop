@@ -3,10 +3,12 @@ import { createVirtualizer } from '@tanstack/solid-virtual';
 import { Plus, Upload } from 'lucide-solid';
 import { type Component, createMemo, createSignal, For, onCleanup, onMount } from 'solid-js';
 import { processUpload } from '../lib/inputs';
+import { resolveGeometry } from '../lib/geo';
 import { addPageAt, cancelPickMode, setState, state } from '../state';
 import { vars } from '../theme';
 import { PageItem } from './PageItem';
 import { Button } from './ui/Button';
+import { InfoMessage } from './ui/InfoMessage';
 
 const StyledWorkspace = styled('div', {
   base: {
@@ -14,14 +16,6 @@ const StyledWorkspace = styled('div', {
     overflowY: 'auto',
     padding: `${vars.gaps.lg} ${vars.gaps.lg} 0`,
     backgroundColor: vars.colors.bg,
-  },
-});
-
-const EmptyState = styled('div', {
-  base: {
-    textAlign: 'center',
-    padding: '100px',
-    color: vars.colors.text,
   },
 });
 
@@ -37,7 +31,7 @@ const PlaceholderPage = styled('div', {
     color: vars.colors.text,
     opacity: 0.6,
     gap: vars.gaps.sm,
-    fontSize: '12px',
+    fontSize: '13px',
     textAlign: 'center',
     padding: vars.gaps.md,
     minHeight: '200px',
@@ -106,6 +100,15 @@ export const Workspace: Component = () => {
       ro.disconnect();
     });
   });
+
+  const workspaceRatio = createMemo(() => {
+    if (state.pages.length === 0) return Math.SQRT2;
+    const firstPage = state.pages[0];
+    const ops = state.operations.slice(0, state.historyIndex);
+    const geo = resolveGeometry(firstPage.originalSize, ops, firstPage.id);
+    return geo.canvasHeight / geo.canvasWidth;
+  });
+
   const columns = createMemo(() => {
     const w = containerWidth() - 40;
     if (w <= 0) return 1;
@@ -124,7 +127,7 @@ export const Workspace: Component = () => {
   const itemHeight = createMemo(() => {
     const lg = 20; // vars.gaps.lg
     const contentW = contentWidth();
-    const contentH = contentW * (state.workspaceRatio || Math.SQRT2);
+    const contentH = contentW * workspaceRatio();
     return contentH + 56 + lg;
   });
 
@@ -205,7 +208,7 @@ export const Workspace: Component = () => {
         {dragInfo() && (
           <PlaceholderPage
             style={{
-              'aspect-ratio': `1 / ${state.workspaceRatio}`,
+              'aspect-ratio': `1 / ${workspaceRatio()}`,
               width: '100%',
               'margin-top': vars.gaps.lg,
               position: 'absolute',
@@ -222,7 +225,7 @@ export const Workspace: Component = () => {
       </StyledVirtualContainer>
 
       {state.pages.length === 0 && !dragInfo() && (
-        <EmptyState>
+        <InfoMessage>
           <div
             style={{
               display: 'flex',
@@ -232,12 +235,12 @@ export const Workspace: Component = () => {
               gap: vars.gaps.sm,
             }}
           >
-            <span style={{ opacity: 0.6 }}>To start, upload a PDF, upload an image, or</span>
-            <Button onClick={() => addPageAt(0)} style={{ 'font-size': '13px' }}>
+            <span>To start, upload a PDF, upload an image, or</span>
+            <Button onClick={() => addPageAt(0)}>
               <Plus size={14} /> add a blank page
             </Button>
           </div>
-        </EmptyState>
+        </InfoMessage>
       )}
     </StyledWorkspace>
   );

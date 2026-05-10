@@ -254,4 +254,29 @@ describe('resolveGeometry', () => {
       expect(y0).toBeCloseTo(0);
     });
   });
+
+  describe('RESET_GEOMETRY', () => {
+    it('resets resize and crop to natural size', () => {
+      const ops: AbstractOperation[] = [
+        resize(200, 300),
+        crop(10, 10, 50, 50),
+        { type: 'RESET_GEOMETRY', pageIds: [PAGE_ID] } as any,
+      ];
+      const geo = resolveGeometry(A4, ops, PAGE_ID);
+      expect(geo.canvasWidth).toBeCloseTo(100);
+      expect(geo.canvasHeight).toBeCloseTo(141.4);
+    });
+
+    it('resets but preserves rotation', () => {
+      const ops: AbstractOperation[] = [
+        transform('rotateCW'),
+        resize(200, 300),
+        { type: 'RESET_GEOMETRY', pageIds: [PAGE_ID] } as any,
+      ];
+      const geo = resolveGeometry(A4, ops, PAGE_ID);
+      // Natural size after CW rotation is 141.4x100
+      expect(geo.canvasWidth).toBeCloseTo(141.4);
+      expect(geo.canvasHeight).toBeCloseTo(100);
+    });
+  });
 });

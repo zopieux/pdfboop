@@ -86,7 +86,8 @@ export type AbstractOperation =
       resizeMode?: ResizeMode;
       anchor?: Anchor;
     }
-  | { type: 'CROP'; pageIds: string[]; crop?: PageCrop };
+  | { type: 'CROP'; pageIds: string[]; crop?: PageCrop }
+  | { type: 'RESET_GEOMETRY'; pageIds: string[] };
 
 export type EditorState = {
   originals: OriginalFile[];
@@ -96,7 +97,6 @@ export type EditorState = {
   selection: string[]; // Page IDs
   assetSelection: string[]; // Asset IDs
   zoom: number; // 1 to 10
-  workspaceRatio: number; // height / width
   draggingKind: 'pdf' | 'image' | 'file' | null;
   activeTab: 'files' | 'assets';
   resizerMode: ResizeMode;

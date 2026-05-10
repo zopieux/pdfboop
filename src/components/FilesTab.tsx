@@ -1,11 +1,13 @@
 import { styled } from '@macaron-css/solid';
-import { AlertTriangle, RefreshCw, Trash2 } from 'lucide-solid';
+import { AlertTriangle, CheckSquare, RefreshCw, Trash2 } from 'lucide-solid';
 import { type Component, createMemo, createSignal, For, Show } from 'solid-js';
 import { handleReupload } from '../lib/inputs';
-import { deleteOriginal, deleteUnusedOriginals, state } from '../state';
+import { deleteOriginal, deleteUnusedOriginals, selectPagesByOriginal, state } from '../state';
 import { vars } from '../theme';
 import type { OriginalFile } from '../types';
 import { Button } from './ui/Button';
+import { ButtonGroup } from './ui/ButtonGroup';
+import { InfoMessage } from './ui/InfoMessage';
 
 const FileCard = styled('div', {
   base: {
@@ -81,40 +83,6 @@ const FileNameWrapper = styled('div', {
   },
 });
 
-const EmptyState = styled('p', {
-  base: {
-    textAlign: 'center',
-    opacity: 0.5,
-    fontSize: '12px',
-    marginTop: '40px',
-    color: vars.colors.text,
-  },
-});
-
-const IconButton = styled('button', {
-  base: {
-    border: 'none',
-    background: 'transparent',
-    cursor: 'pointer',
-    color: vars.colors.text,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '4px',
-    borderRadius: '4px',
-    transition: 'background 0.1s, color 0.1s',
-    selectors: {
-      '&:hover': {
-        background: vars.colors.border,
-      },
-      '&.danger:hover': {
-        background: '#fee2e2',
-        color: '#ef4444',
-      },
-    },
-  },
-});
-
 const ConfirmContainer = styled('div', {
   base: {
     display: 'flex',
@@ -137,9 +105,10 @@ const ConfirmMessage = styled('div', {
 const ConfirmButton = styled(Button, {
   base: {
     flex: 1,
-    fontSize: '10px',
-    padding: '4px',
     justifyContent: 'center',
+  },
+  defaultVariants: {
+    size: 'sm',
   },
   variants: {
     intent: {
@@ -170,7 +139,7 @@ const UnusedButton = styled(Button, {
   base: {
     width: '100%',
     padding: vars.gaps.sm,
-    fontSize: '12px',
+    fontSize: '13px',
     justifyContent: 'center',
   },
 });
@@ -263,23 +232,9 @@ const OriginalItem: Component<{ file: OriginalFile }> = (props) => {
             <StatusDot style={{ background: props.file.color }} />
             <FileName title={props.file.name}>{props.file.name}</FileName>
           </FileNameWrapper>
-          <div style={{ display: 'flex', gap: '4px', 'align-items': 'center' }}>
-            {props.file.evicted && <AlertTriangle size={14} color={vars.colors.danger} />}
-            <IconButton
-              class="danger"
-              title="Remove file and associated pages"
-              onClick={(e: MouseEvent) => {
-                e.stopPropagation();
-                if (pagesToDelete() === 0) {
-                  deleteOriginal(props.file.id);
-                } else {
-                  setIsConfirming(true);
-                }
-              }}
-            >
-              <Trash2 size={14} />
-            </IconButton>
-          </div>
+          <Show when={props.file.evicted}>
+            <AlertTriangle size={14} color={vars.colors.danger} />
+          </Show>
         </FileHeader>
         <FileMeta>
           <span>{props.file.type.toUpperCase()}</span>
@@ -292,12 +247,32 @@ const OriginalItem: Component<{ file: OriginalFile }> = (props) => {
           </Show>
           <span>{formatSize(props.file.size)}</span>
         </FileMeta>
-        <Button
-          style={{ width: '100%', 'margin-top': vars.gaps.sm, 'font-size': '11px' }}
-          onClick={() => fileInput?.click()}
-        >
-          <RefreshCw size={12} /> Replace / Re-upload
-        </Button>
+        <ButtonGroup size="small">
+          <Button
+            onClick={(e: MouseEvent) => {
+              selectPagesByOriginal(props.file.id, e.shiftKey || e.ctrlKey || e.metaKey);
+            }}
+            title="Select all pages from this file"
+          >
+            <CheckSquare size={12} /> Select
+          </Button>
+          <Button onClick={() => fileInput?.click()}>
+            <RefreshCw size={12} /> Replace
+          </Button>
+          <Button
+            variant="danger"
+            onClick={(e: MouseEvent) => {
+              e.stopPropagation();
+              if (pagesToDelete() === 0) {
+                deleteOriginal(props.file.id);
+              } else {
+                setIsConfirming(true);
+              }
+            }}
+          >
+            <Trash2 size={12} /> Delete
+          </Button>
+        </ButtonGroup>
         <input
           type="file"
           ref={fileInput}
@@ -327,7 +302,7 @@ export const FilesTab: Component = () => {
         </ActionHeader>
       </Show>
       <For each={state.originals}>{(file) => <OriginalItem file={file} />}</For>
-      {state.originals.length === 0 && <EmptyState>No files uploaded.</EmptyState>}
+      {state.originals.length === 0 && <InfoMessage>No files uploaded</InfoMessage>}
     </div>
   );
 };

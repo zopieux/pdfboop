@@ -9,9 +9,10 @@ export const Button = styled('button', {
     padding: `${vars.gaps.xs} ${vars.gaps.sm}`,
     borderRadius: '4px',
     cursor: 'pointer',
-    fontSize: '14px',
+    fontSize: '13px',
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: vars.gaps.xs,
     transition: 'background 0.1s',
     selectors: {
@@ -25,6 +26,12 @@ export const Button = styled('button', {
     },
   },
   variants: {
+    size: {
+      sm: {
+        fontSize: '11px',
+        padding: '4px 8px',
+      },
+    },
     variant: {
       primary: {
         background: vars.colors.primary,

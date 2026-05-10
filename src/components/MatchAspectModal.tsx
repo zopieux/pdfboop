@@ -14,6 +14,7 @@ import { pushOperation, setState, state } from '../state';
 import { themeClass, vars } from '../theme';
 import type { Page } from '../types';
 import { Button } from './ui/Button';
+import { ButtonGroup } from './ui/ButtonGroup';
 
 const ModalBackdrop = styled('div', {
   base: {
@@ -306,12 +307,12 @@ export const MatchAspectModal: Component<{ targetPage: Page; onClose: () => void
         <ModalContent onClick={(e: MouseEvent) => e.stopPropagation()}>
           <ModalHeader>
             <ModalTitle>Fit into Page</ModalTitle>
-            <div style={{ display: 'flex', gap: vars.gaps.sm }}>
+            <ButtonGroup fill={false} style={{ 'margin-top': 0 }}>
               <Button onClick={props.onClose}>Cancel</Button>
               <Button variant="primary" onClick={onApply}>
                 Apply Aspect Match
               </Button>
-            </div>
+            </ButtonGroup>
           </ModalHeader>
           <ModalBody ref={setContainer}>
             <PreviewWrapper

@@ -17,63 +17,13 @@ const StyledAside = styled('aside', {
   },
 });
 
-const TabList = styled('div', {
-  base: {
-    display: 'flex',
-    height: vars.sizes.headerHeight,
-    borderBottom: `1px solid ${vars.colors.border}`,
-  },
-});
-
-const TabButton = styled('button', {
-  base: {
-    flex: 1,
-    height: '100%',
-    border: 'none',
-    background: 'transparent',
-    color: vars.colors.text,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: vars.gaps.sm,
-    fontSize: '13px',
-    fontWeight: 500,
-    transition: 'background 0.1s, color 0.1s',
-    selectors: {
-      '&:hover': {
-        background: vars.colors.border,
-      },
-    },
-  },
-  variants: {
-    active: {
-      true: {
-        background: vars.colors.primary,
-        color: vars.colors.surface,
-        selectors: {
-          '&:hover': {
-            background: vars.colors.primary,
-          },
-        },
-      },
-    },
-  },
-});
+import { TabButton, TabList } from './ui/Tabs';
 
 const TabContent = styled('div', {
   base: {
     flex: 1,
     overflowY: 'auto',
     minHeight: 0,
-  },
-});
-
-const ResizerWrapper = styled('div', {
-  base: {
-    height: '30%',
-    flexShrink: 0,
-    minHeight: '180px', // Ensure it doesn't get too squashed
   },
 });
 
@@ -91,9 +41,7 @@ export const SidePane: Component = () => {
 
       <TabContent>{state.activeTab === 'files' ? <FilesTab /> : <AssetsTab />}</TabContent>
 
-      <ResizerWrapper>
-        <ResizerPane />
-      </ResizerWrapper>
+      <ResizerPane />
     </StyledAside>
   );
 };

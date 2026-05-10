@@ -5,7 +5,6 @@ export const AnchorIcon = (props: { anchor: Anchor }) => {
   const getFill = (a: Anchor) => (props.anchor === a ? vars.colors.primary : 'transparent');
   return (
     <svg width="20" height="20" viewBox="0 0 14 14" style={{ 'flex-shrink': 0, display: 'block' }}>
-      <title>Anchor point indicator</title>
       <circle
         cx="2.5"
         cy="2.5"

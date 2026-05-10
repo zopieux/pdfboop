@@ -8,6 +8,7 @@ import type {
   EditorState,
   OriginalFile,
   Page,
+  PageSize,
   ResizeMode,
   UserPreferences,
 } from './types';
@@ -18,7 +19,9 @@ const INITIAL_PREFS: UserPreferences = {
 };
 
 const loadPrefs = (): UserPreferences => {
-  const saved = localStorage.getItem('pdfboop_prefs');
+  const storage = typeof localStorage !== 'undefined' ? localStorage : null;
+  if (!storage || typeof storage.getItem !== 'function') return INITIAL_PREFS;
+  const saved = storage.getItem('pdfboop_prefs');
   if (saved) {
     try {
       return JSON.parse(saved);
@@ -30,6 +33,7 @@ const loadPrefs = (): UserPreferences => {
 };
 
 const savePrefs = (prefs: UserPreferences) => {
+  if (typeof localStorage === 'undefined') return;
   localStorage.setItem('pdfboop_prefs', JSON.stringify(prefs));
 };
 
@@ -41,7 +45,6 @@ const getInitialState = (): EditorState => ({
   selection: [],
   assetSelection: [],
   zoom: 4,
-  workspaceRatio: Math.SQRT2, // ISO (A4) ratio
   draggingKind: null,
   activeTab: 'files',
   resizerLinked: true,
@@ -114,16 +117,6 @@ export const recalculatePages = () => {
       return state.originals.some((o) => o.id === originalId);
     }),
   );
-
-  // Update workspace ratio based on the first non-blank page
-  const trendSetter = newPages.find((p) => p.originalId !== '');
-  if (trendSetter) {
-    const geo = resolveGeometry(trendSetter.originalSize, currentOps, trendSetter.id);
-    setState('workspaceRatio', geo.canvasHeight / geo.canvasWidth);
-  } else {
-    setState('workspaceRatio', Math.SQRT2);
-  }
-
   saveState();
 };
 
@@ -167,10 +160,13 @@ export const saveState = () => {
   delete (stateToSave as any).resizerMode;
   delete (stateToSave as any).resizerAnchor;
 
-  localStorage.setItem('pdfboop_state', JSON.stringify(stateToSave));
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('pdfboop_state', JSON.stringify(stateToSave));
+  }
 };
 
 export const loadState = () => {
+  if (typeof localStorage === 'undefined') return;
   const saved = localStorage.getItem('pdfboop_state');
   if (saved) {
     try {
@@ -213,7 +209,9 @@ export const setActiveTab = (tab: 'files' | 'assets') => {
 };
 
 export const clearWorkspace = async () => {
-  localStorage.removeItem('pdfboop_state');
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('pdfboop_state');
+  }
   setState(
     reconcile({
       ...getInitialState(),
@@ -350,14 +348,13 @@ export const deleteSelected = () => {
   pushOperation({ type: 'DELETE', pageIds: [...state.selection] });
 };
 
-export const addPageAt = (index: number) => {
-  const w = 595.28;
-  const h = w * (state.workspaceRatio || Math.SQRT2);
+export const addPageAt = (index: number, size?: PageSize) => {
+  const finalSize = size || { width: 595.28, height: 595.28 * Math.SQRT2 }; // A4
   pushOperation({
     type: 'ADD_BLANK',
     pageId: crypto.randomUUID(),
     index,
-    originalSize: { width: w, height: h },
+    originalSize: finalSize,
   });
 };
 
@@ -399,6 +396,22 @@ export const selectPage = (id: string, allIds: string[], multi = false, shift = 
   setState('selection', reconcile(newSelection));
 };
 
+export const selectAllPages = () => {
+  setState(
+    'selection',
+    state.pages.map((p) => p.id),
+  );
+};
+
+export const selectPagesByOriginal = (originalId: string, add = false) => {
+  const targetIds = state.pages.filter((p) => p.originalId === originalId).map((p) => p.id);
+  if (add) {
+    setState('selection', (s) => [...new Set([...s, ...targetIds])]);
+  } else {
+    setState('selection', targetIds);
+  }
+};
+
 // Asset selection
 export const selectAsset = (id: string, allIds: string[], multi = false, shift = false) => {
   const newSelection = computeSelection(
@@ -424,7 +437,14 @@ export const resizeSelected = (targetSize?: { width: number; height: number }) =
       resizeMode: state.resizerMode,
       anchor: state.resizerAnchor,
     });
+  } else {
+    resetGeometrySelected();
   }
+};
+
+export const resetGeometrySelected = () => {
+  if (state.selection.length === 0) return;
+  pushOperation({ type: 'RESET_GEOMETRY', pageIds: [...state.selection] });
 };
 
 export const setResizerMode = (mode: ResizeMode) => {

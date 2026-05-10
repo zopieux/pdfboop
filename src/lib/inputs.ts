@@ -120,10 +120,6 @@ export const processUpload = async (files: FileList) => {
 
     setState('originals', (o) => [...o, original]);
 
-    if (state.pages.length === 0 && pageRatios.length > 0) {
-      setState('workspaceRatio', pageRatios[0]);
-    }
-
     pushOperation({
       type: 'APPEND_ORIGINAL',
       originalId: id,

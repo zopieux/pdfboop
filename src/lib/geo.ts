@@ -108,14 +108,63 @@ export function resolveGeometry(
         break;
       }
       case 'RESIZE': {
-        if (!op.targetSize) break;
-        const tw = op.targetSize.width;
-        const th = op.targetSize.height;
+        let tw = op.targetSize?.width || width;
+        let th = op.targetSize?.height || height;
 
-        // Fit current paper into new paper (letterbox)
-        const s = Math.min(tw / width, th / height);
-        const dx = (tw - width * s) / 2;
-        const dy = (th - height * s) / 2;
+        if (op.targetRatio) {
+          const isLandscape = width > height;
+          const ratio = isLandscape ? 1 / op.targetRatio : op.targetRatio;
+          const currentRatio = height / width;
+
+          if (op.resizeMode === 'crop') {
+            if (ratio > currentRatio) {
+              tw = height / ratio;
+              th = height;
+            } else {
+              tw = width;
+              th = width * ratio;
+            }
+          } else {
+            if (ratio > currentRatio) {
+              tw = width;
+              th = width * ratio;
+            } else {
+              tw = height / ratio;
+              th = height;
+            }
+          }
+        }
+
+        // Fit current paper into new paper
+        // 'pad' (default) uses min to fit entire content
+        // 'crop' uses max to cover the entire target area
+        const s =
+          op.resizeMode === 'crop'
+            ? Math.max(tw / width, th / height)
+            : Math.min(tw / width, th / height);
+
+        let dx = (tw - width * s) / 2;
+        let dy = (th - height * s) / 2;
+
+        if (op.anchor === 'top-left' || op.anchor === 'left' || op.anchor === 'bottom-left') {
+          dx = 0;
+        } else if (
+          op.anchor === 'top-right' ||
+          op.anchor === 'right' ||
+          op.anchor === 'bottom-right'
+        ) {
+          dx = tw - width * s;
+        }
+
+        if (op.anchor === 'top-left' || op.anchor === 'top' || op.anchor === 'top-right') {
+          dy = 0;
+        } else if (
+          op.anchor === 'bottom-left' ||
+          op.anchor === 'bottom' ||
+          op.anchor === 'bottom-right'
+        ) {
+          dy = th - height * s;
+        }
 
         cx = cx * s + dx;
         cy = cy * s + dy;

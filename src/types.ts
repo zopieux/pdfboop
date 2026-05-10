@@ -7,6 +7,17 @@ export type PageCrop = {
   height: number;
 };
 
+export type Anchor =
+  | 'top-left'
+  | 'top'
+  | 'top-right'
+  | 'left'
+  | 'center'
+  | 'right'
+  | 'bottom-left'
+  | 'bottom'
+  | 'bottom-right';
+
 export type Page = {
   id: string;
   originalId: string;
@@ -43,6 +54,13 @@ export type OriginalFile = {
   assetScales: Record<string, number>; // 0.01 to 1.0
 };
 
+export type ResizeMode = 'crop' | 'pad';
+
+export type UserPreferences = {
+  resizerMode: ResizeMode;
+  resizerAnchor: Anchor;
+};
+
 export type AbstractOperation =
   | { type: 'APPEND_ORIGINAL'; originalId: string; instanceId: string }
   | { type: 'ADD_BLANK'; pageId: string; index: number; originalSize: PageSize }
@@ -60,7 +78,14 @@ export type AbstractOperation =
       newBlobIds: string[]; // 1:1 with imageRefs or 1:Many
     }
   | { type: 'DELETE_IMAGE'; originalId: string; imageRefs: string[] }
-  | { type: 'RESIZE'; pageIds: string[]; targetSize?: PageSize }
+  | {
+      type: 'RESIZE';
+      pageIds: string[];
+      targetSize?: PageSize;
+      targetRatio?: number;
+      resizeMode?: ResizeMode;
+      anchor?: Anchor;
+    }
   | { type: 'CROP'; pageIds: string[]; crop?: PageCrop };
 
 export type EditorState = {
@@ -74,5 +99,8 @@ export type EditorState = {
   workspaceRatio: number; // height / width
   draggingKind: 'pdf' | 'image' | 'file' | null;
   activeTab: 'files' | 'assets';
+  resizerMode: ResizeMode;
+  resizerAnchor: Anchor;
+  resizerLinked: boolean;
   pickingAspectFor?: string[]; // IDs of pages we are matching for
 };

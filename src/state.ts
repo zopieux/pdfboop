@@ -1,9 +1,39 @@
 import { createStore, produce, reconcile, unwrap } from 'solid-js/store';
 import { resolveGeometry } from './lib/geo';
 import { computeSelection } from './lib/selection';
-import type { AbstractOperation, Asset, EditorState, OriginalFile, Page } from './types';
+import type {
+  AbstractOperation,
+  Anchor,
+  Asset,
+  EditorState,
+  OriginalFile,
+  Page,
+  ResizeMode,
+  UserPreferences,
+} from './types';
 
-const [state, setState] = createStore<EditorState>({
+const INITIAL_PREFS: UserPreferences = {
+  resizerMode: 'crop',
+  resizerAnchor: 'center',
+};
+
+const loadPrefs = (): UserPreferences => {
+  const saved = localStorage.getItem('pdfboop_prefs');
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load prefs', e);
+    }
+  }
+  return INITIAL_PREFS;
+};
+
+const savePrefs = (prefs: UserPreferences) => {
+  localStorage.setItem('pdfboop_prefs', JSON.stringify(prefs));
+};
+
+const getInitialState = (): EditorState => ({
   originals: [],
   operations: [],
   historyIndex: 0,
@@ -11,10 +41,15 @@ const [state, setState] = createStore<EditorState>({
   selection: [],
   assetSelection: [],
   zoom: 4,
-  workspaceRatio: Math.SQRT2, // A4 ratio
+  workspaceRatio: Math.SQRT2, // ISO (A4) ratio
   draggingKind: null,
   activeTab: 'files',
+  resizerLinked: true,
+  pickingAspectFor: undefined,
+  ...loadPrefs(),
 });
+
+const [state, setState] = createStore<EditorState>(getInitialState());
 
 export { setState, state };
 // Core Evaluator — geometry ops (TRANSFORM, RESIZE, CROP) stay in the timeline
@@ -128,6 +163,9 @@ export const saveState = () => {
   delete (stateToSave as any).draggingKind;
   delete (stateToSave as any).pickingAspectFor;
   delete (stateToSave as any).pages;
+  // resizerLinked IS saved in pdfboop_state as it is workspace-scoped
+  delete (stateToSave as any).resizerMode;
+  delete (stateToSave as any).resizerAnchor;
 
   localStorage.setItem('pdfboop_state', JSON.stringify(stateToSave));
 };
@@ -147,8 +185,9 @@ export const loadState = () => {
 
         setState(
           reconcile({
-            activeTab: 'files',
+            ...getInitialState(),
             ...parsed,
+            ...loadPrefs(),
             selection: [],
             assetSelection: [],
             draggingKind: null,
@@ -177,17 +216,9 @@ export const clearWorkspace = async () => {
   localStorage.removeItem('pdfboop_state');
   setState(
     reconcile({
-      originals: [],
-      operations: [],
-      historyIndex: 0,
-      pages: [],
-      selection: [],
-      assetSelection: [],
-      zoom: 4,
-      workspaceRatio: Math.SQRT2,
-      draggingKind: null,
-      activeTab: 'files',
-      pickingAspectFor: undefined,
+      ...getInitialState(),
+      resizerMode: state.resizerMode,
+      resizerAnchor: state.resizerAnchor,
     }),
   );
   await caches.delete('pdfboop-originals');
@@ -270,22 +301,7 @@ export const getOriginalBlob = async (id: string) => {
 
 // Utilities for testing
 export const resetState = (initial?: Partial<EditorState>) => {
-  setState(
-    reconcile({
-      originals: [],
-      operations: [],
-      historyIndex: 0,
-      pages: [],
-      selection: [],
-      assetSelection: [],
-      zoom: 4,
-      workspaceRatio: Math.SQRT2,
-      draggingKind: null,
-      activeTab: 'files',
-      pickingAspectFor: undefined,
-      ...initial,
-    }),
-  );
+  setState(reconcile({ ...getInitialState(), ...initial }));
 };
 
 // Mutations
@@ -401,8 +417,41 @@ export const clearAssetSelection = () => setState('assetSelection', []);
 export const resizeSelected = (targetSize?: { width: number; height: number }) => {
   if (state.selection.length === 0) return;
   if (targetSize) {
-    pushOperation({ type: 'RESIZE', pageIds: [...state.selection], targetSize });
+    pushOperation({
+      type: 'RESIZE',
+      pageIds: [...state.selection],
+      targetSize,
+      resizeMode: state.resizerMode,
+      anchor: state.resizerAnchor,
+    });
   }
+};
+
+export const setResizerMode = (mode: ResizeMode) => {
+  setState('resizerMode', mode);
+  savePrefs({ resizerMode: mode, resizerAnchor: state.resizerAnchor });
+};
+
+export const setResizerAnchor = (anchor: Anchor) => {
+  setState('resizerAnchor', anchor);
+  savePrefs({ resizerMode: state.resizerMode, resizerAnchor: anchor });
+};
+
+export const setResizerLinked = (linked: boolean) => {
+  setState('resizerLinked', linked);
+  saveState();
+};
+
+export const resizeSelectedToRatio = (ratio: number) => {
+  if (state.selection.length === 0) return;
+  setState('resizerLinked', true); // Linking is implied when choosing a ratio
+  pushOperation({
+    type: 'RESIZE',
+    pageIds: [...state.selection],
+    targetRatio: ratio,
+    resizeMode: state.resizerMode,
+    anchor: state.resizerAnchor,
+  });
 };
 
 export const startPickMode = () => {

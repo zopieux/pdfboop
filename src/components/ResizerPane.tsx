@@ -1,9 +1,19 @@
 import { styled } from '@macaron-css/solid';
-import { ChevronDown, ChevronUp, Files, RefreshCw, Scissors } from 'lucide-solid';
+import {
+  ChevronDown,
+  ChevronUp,
+  Crop,
+  Files,
+  Link,
+  Maximize,
+  RefreshCw,
+  Scissors,
+  Unlink,
+} from 'lucide-solid';
 import { type Component, createMemo, createSignal, Show } from 'solid-js';
 
-const Maximize = ChevronUp;
-const Minimize = ChevronDown;
+const Grow = ChevronUp;
+const Shrink = ChevronDown;
 const Layers = Files;
 const AspectRatio = Scissors;
 
@@ -11,13 +21,18 @@ import { resolveGeometry } from '../lib/geo';
 import {
   cancelPickMode,
   resizeSelected,
+  resizeSelectedToRatio,
   selectSameAspect,
   selectSameSize,
+  setResizerAnchor,
+  setResizerLinked,
+  setResizerMode,
   startPickMode,
   state,
 } from '../state';
 import { vars } from '../theme';
-import type { Page } from '../types';
+import type { Anchor, Page } from '../types';
+import { AnchorIcon } from './ui/AnchorIcon';
 import { Button } from './ui/Button';
 
 const Container = styled('div', {
@@ -62,7 +77,7 @@ const EmptyState = styled('div', {
 const InputGroup = styled('div', {
   base: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'stretch',
     gap: vars.gaps.sm,
   },
 });
@@ -109,6 +124,45 @@ const ActionGroup = styled('div', {
     marginTop: vars.gaps.xs,
   },
 });
+
+const StyledSelect = styled('select', {
+  base: {
+    flex: 1,
+    background: vars.colors.bg,
+    border: `1px solid ${vars.colors.border}`,
+    color: vars.colors.text,
+    padding: '4px 8px',
+    borderRadius: '4px',
+    fontSize: '13px',
+    '&:focus': {
+      outline: `2px solid ${vars.colors.primary}`,
+      outlineOffset: '-1px',
+    },
+  },
+});
+
+const WELL_KNOWN_SIZES = [
+  { name: 'ISO (A4, etc.)', ratio: Math.SQRT2 },
+  { name: 'US Letter', ratio: 11 / 8.5 },
+  { name: 'US Legal', ratio: 14 / 8.5 },
+  { name: 'Tabloid', ratio: 17 / 11 },
+  { name: 'Square', ratio: 1 },
+  { name: '16:9', ratio: 16 / 9 },
+  { name: '4:3', ratio: 4 / 3 },
+  { name: '21:9', ratio: 21 / 9 },
+];
+
+const ANCHORS: Anchor[] = [
+  'top-left',
+  'top',
+  'top-right',
+  'left',
+  'center',
+  'right',
+  'bottom-left',
+  'bottom',
+  'bottom-right',
+];
 
 export const ResizerPane: Component = () => {
   const selectedPages = createMemo(() => state.pages.filter((p) => state.selection.includes(p.id)));
@@ -172,8 +226,12 @@ export const ResizerPane: Component = () => {
     const w = parseFloat(val);
     const a = analysis();
     if (!Number.isNaN(w) && w > 0 && a) {
-      const h = w * a.aspect;
-      resizeSelected({ width: w, height: h });
+      if (state.resizerLinked) {
+        const h = w * a.aspect;
+        resizeSelected({ width: w, height: h });
+      } else {
+        resizeSelected({ width: w, height: a.height });
+      }
     } else {
       // Reset if invalid
       setLocalW(a?.width.toFixed(2) || '');
@@ -184,8 +242,12 @@ export const ResizerPane: Component = () => {
     const h = parseFloat(val);
     const a = analysis();
     if (!Number.isNaN(h) && h > 0 && a) {
-      const w = h / a.aspect;
-      resizeSelected({ width: w, height: h });
+      if (state.resizerLinked) {
+        const w = h / a.aspect;
+        resizeSelected({ width: w, height: h });
+      } else {
+        resizeSelected({ width: a.width, height: h });
+      }
     } else {
       // Reset if invalid
       setLocalH(a?.height.toFixed(2) || '');
@@ -242,6 +304,12 @@ export const ResizerPane: Component = () => {
     }
   };
 
+  const cycleAnchor = (dir: 1 | -1) => {
+    const idx = ANCHORS.indexOf(state.resizerAnchor);
+    const nextIdx = (idx + dir + ANCHORS.length) % ANCHORS.length;
+    setResizerAnchor(ANCHORS[nextIdx]);
+  };
+
   return (
     <Container>
       <Title>
@@ -286,10 +354,10 @@ export const ResizerPane: Component = () => {
                     </div>
                     <ActionGroup>
                       <Button onClick={resizeToSmallest} style={{ flex: 1 }}>
-                        <Minimize size={14} /> Resize to smallest
+                        <Shrink size={14} /> Resize to smallest
                       </Button>
                       <Button onClick={resizeToLargest} style={{ flex: 1 }}>
-                        <Maximize size={14} /> Resize to largest
+                        <Grow size={14} /> Resize to largest
                       </Button>
                     </ActionGroup>
                     <Button
@@ -323,6 +391,23 @@ export const ResizerPane: Component = () => {
                       }
                     />
                   </InputWrapper>
+                  <Button
+                    onClick={() => setResizerLinked(!state.resizerLinked)}
+                    style={{
+                      width: '32px',
+                      padding: '4px',
+                      'justify-content': 'center',
+                      'margin-top': '14px',
+                      border: 'none',
+                      background: 'none',
+                      opacity: state.resizerLinked ? 1 : 0.5,
+                    }}
+                    title={state.resizerLinked ? 'Unlink dimensions' : 'Link dimensions'}
+                  >
+                    <Show when={state.resizerLinked} fallback={<Unlink size={16} />}>
+                      <Link size={16} />
+                    </Show>
+                  </Button>
                   <InputWrapper>
                     <Label>Height (pt)</Label>
                     <StyledInput
@@ -335,6 +420,69 @@ export const ResizerPane: Component = () => {
                       }
                     />
                   </InputWrapper>
+                </InputGroup>
+
+                <InputGroup>
+                  <StyledSelect
+                    value={(() => {
+                      const a = analysis();
+                      if (!a) return 'custom';
+                      const match = WELL_KNOWN_SIZES.find(
+                        (s) =>
+                          Math.abs(s.ratio - a.aspect) < 0.005 ||
+                          Math.abs(s.ratio - 1 / a.aspect) < 0.005,
+                      );
+                      return match ? match.name : 'custom';
+                    })()}
+                    onChange={(e: any) => {
+                      const val = e.currentTarget.value;
+                      if (val === 'custom') {
+                        setResizerLinked(false);
+                        return;
+                      }
+                      const size = WELL_KNOWN_SIZES.find((s) => s.name === val);
+                      if (size) {
+                        resizeSelectedToRatio(size.ratio);
+                      }
+                    }}
+                  >
+                    <option value="custom">Custom</option>
+                    {WELL_KNOWN_SIZES.map((s) => (
+                      <option value={s.name}>{s.name}</option>
+                    ))}
+                  </StyledSelect>
+                  <Button
+                    onClick={() => cycleAnchor(1)}
+                    onContextMenu={(e: any) => {
+                      e.preventDefault();
+                      cycleAnchor(-1);
+                    }}
+                    onWheel={(e: any) => {
+                      e.preventDefault();
+                      cycleAnchor(e.deltaY > 0 ? 1 : -1);
+                    }}
+                    style={{
+                      width: '36px',
+                      padding: '2px',
+                      'justify-content': 'center',
+                    }}
+                    title={`Anchor: ${state.resizerAnchor} (Click/Wheel to cycle)`}
+                  >
+                    <AnchorIcon anchor={state.resizerAnchor} />
+                  </Button>
+                  <Button
+                    onClick={() => setResizerMode(state.resizerMode === 'crop' ? 'pad' : 'crop')}
+                    style={{
+                      width: '80px',
+                      'justify-content': 'center',
+                    }}
+                    title={state.resizerMode === 'crop' ? 'Switch to Pad' : 'Switch to Crop'}
+                  >
+                    <Show when={state.resizerMode === 'crop'} fallback={<Maximize size={14} />}>
+                      <Crop size={14} />
+                    </Show>
+                    {state.resizerMode === 'crop' ? 'Crop' : 'Pad'}
+                  </Button>
                 </InputGroup>
 
                 <ActionGroup>

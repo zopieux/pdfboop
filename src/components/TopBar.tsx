@@ -146,7 +146,7 @@ export const TopBar: Component = () => {
 
       <ToolbarGroup style={{ gap: vars.gaps.sm }}>
         <Button variant="primary" onClick={exportProject}>
-          <Download size={16} /> Save
+          <Download size={16} /> Save PDF
         </Button>
       </ToolbarGroup>
     </StyledHeader>

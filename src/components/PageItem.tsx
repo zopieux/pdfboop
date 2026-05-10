@@ -1,5 +1,5 @@
 import { styled } from '@macaron-css/solid';
-import { AlertTriangle, Plus, RefreshCw, Trash2 } from 'lucide-solid';
+import { AlertTriangle, ArrowLeft, ArrowRight, Plus, RefreshCw, Trash2 } from 'lucide-solid';
 import {
   type Component,
   createEffect,
@@ -43,6 +43,10 @@ const PageContainer = styled('div', {
   },
 });
 
+// Shared map to track page positions for FLIP animations across re-renders and virtual row swaps.
+// This allows us to animate pages smoothly as they move from one row to another.
+const lastRects = new Map<string, { rect: DOMRect; index: number }>();
+
 const Section = styled('div', {
   base: {
     height: '28px',
@@ -59,6 +63,19 @@ const PageFooter = styled(Section, {
   base: {
     borderBottom: 'none',
     borderTop: `1px solid ${vars.colors.border}`,
+  },
+});
+
+const OpGroup = styled('div', {
+  base: {
+    display: 'flex',
+    flex: 1,
+    height: '100%',
+    selectors: {
+      '&:not(:last-child)': {
+        borderRight: `1px solid ${vars.colors.border}`,
+      },
+    },
   },
 });
 
@@ -209,6 +226,41 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
   const [pickedTarget, setPickedTarget] = createSignal<Page | null>(null);
   let containerRef: HTMLDivElement | undefined;
 
+  createEffect(() => {
+    const id = props.page.id;
+    const currentIndex = props.index;
+
+    if (!containerRef) return;
+
+    const newRect = containerRef.getBoundingClientRect();
+    const prev = lastRects.get(id);
+
+    // Only animate if the index changed (reorder operation),
+    // we have a previous position, and the user hasn't requested reduced motion.
+    if (
+      prev &&
+      prev.index !== currentIndex &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      const dx = prev.rect.left - newRect.left;
+      const dy = prev.rect.top - newRect.top;
+
+      // Filter out huge jumps (e.g. from virtualization resets)
+      if (Math.abs(dx) < 2000 && Math.abs(dy) < 2000 && (dx !== 0 || dy !== 0)) {
+        containerRef.animate(
+          [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
+          {
+            duration: 300,
+            easing: 'cubic-bezier(0.2, 0, 0, 1)',
+          },
+        );
+      }
+    }
+
+    // Record the current state for the next reorder
+    lastRects.set(id, { rect: newRect, index: currentIndex });
+  });
+
   const original = createMemo(() => state.originals.find((o) => o.id === props.page.originalId));
 
   onMount(() => {
@@ -279,6 +331,14 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
     addPageAt(index);
   };
 
+  const handleMove = (direction: -1 | 1) => {
+    pushOperation({
+      type: 'MOVE',
+      pageIds: [props.page.id],
+      targetIndex: direction === -1 ? props.index - 1 : props.index + 1,
+    } as any);
+  };
+
   const onDragOver = (e: DragEvent) => {
     if (!original()?.evicted) return;
     e.preventDefault();
@@ -342,15 +402,29 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
         <MatchAspectModal targetPage={pickedTarget()!} onClose={() => setPickedTarget(null)} />
       </Show>
       <Section>
-        <PageOpButton
-          onClick={(e: MouseEvent) => {
-            e.stopPropagation();
-            handleAddAt(props.index);
-          }}
-          title="Add page before"
-        >
-          <Plus size={14} />
-        </PageOpButton>
+        <OpGroup>
+          <PageOpButton
+            onClick={(e: MouseEvent) => {
+              e.stopPropagation();
+              handleAddAt(props.index);
+            }}
+            title="Add page before"
+          >
+            <Plus size={14} />
+          </PageOpButton>
+          <Show when={props.index > 0}>
+            <PageOpButton
+              onClick={(e: MouseEvent) => {
+                e.stopPropagation();
+                handleMove(-1);
+              }}
+              title="Move left"
+            >
+              <ArrowLeft size={14} />
+            </PageOpButton>
+          </Show>
+        </OpGroup>
+
         <PageOpButton
           class="danger"
           onClick={(e: MouseEvent) => {
@@ -361,15 +435,29 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
         >
           <Trash2 size={14} />
         </PageOpButton>
-        <PageOpButton
-          onClick={(e: MouseEvent) => {
-            e.stopPropagation();
-            handleAddAt(props.index + 1);
-          }}
-          title="Add page after"
-        >
-          <Plus size={14} />
-        </PageOpButton>
+
+        <OpGroup>
+          <Show when={props.index < state.pages.length - 1}>
+            <PageOpButton
+              onClick={(e: MouseEvent) => {
+                e.stopPropagation();
+                handleMove(1);
+              }}
+              title="Move right"
+            >
+              <ArrowRight size={14} />
+            </PageOpButton>
+          </Show>
+          <PageOpButton
+            onClick={(e: MouseEvent) => {
+              e.stopPropagation();
+              handleAddAt(props.index + 1);
+            }}
+            title="Add page after"
+          >
+            <Plus size={14} />
+          </PageOpButton>
+        </OpGroup>
       </Section>
 
       <CanvasContainer onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>

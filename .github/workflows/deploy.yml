@@ -1,0 +1,36 @@
+name: deploy
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
+        with:
+          extra_nix_config: sandbox = true
+
+      - name: Build
+        run: |
+          nix build .#default
+          mkdir -p dist
+          cp -rL result/* dist/
+
+      - name: Deploy on GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@d92aa235d04922e8f08b40ce78cc5442fcfbfa2f # v4.8.0
+        with:
+          folder: dist
+          token: ${{ secrets.DEPLOY_TOKEN }}
+          repository-name: zopieux/zopieux.github.io
+          branch: master
+          target-folder: pdf
+          commit-message: Deploy pdfboop.
+          git-config-user: Alexandre Macabies
+          git-config-email: <web+oss@zopieux.com>

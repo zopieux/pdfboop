@@ -280,12 +280,11 @@ export const PageItem: Component<{ page: Page; index: number; width: number }> =
       void state.operations.length;
       original(); // Track re-uploads
 
-      const abortController = new AbortController();
-      renderPreview(props.page, c, w, abortController.signal);
+      // Pin the first and last 3 pages so they survive LRU eviction longest
+      const pinned = props.index < 3 || props.index >= state.pages.length - 3;
+      const cancel = renderPreview(props.page, c, w, 'visible', pinned);
 
-      onCleanup(() => {
-        abortController.abort();
-      });
+      onCleanup(cancel);
     }
   });
 

@@ -1,9 +1,19 @@
 import { styled } from '@macaron-css/solid';
 import { createVirtualizer } from '@tanstack/solid-virtual';
 import { Plus, Upload } from 'lucide-solid';
-import { type Component, createMemo, createSignal, For, onCleanup, onMount } from 'solid-js';
-import { processUpload } from '../lib/inputs';
+import {
+  type Component,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+} from 'solid-js';
 import { resolveGeometry } from '../lib/geo';
+import { processUpload } from '../lib/inputs';
+import { renderQueue } from '../lib/previewCache';
+import { computePreviewKey, getBucket, warmupPreview } from '../lib/previews';
 import { addPageAt, cancelPickMode, setState, state } from '../state';
 import { vars } from '../theme';
 import { PageItem } from './PageItem';
@@ -148,6 +158,75 @@ export const Workspace: Component = () => {
     getScrollElement: () => containerRef || null,
     estimateSize: () => itemHeight(),
     overscan: 2,
+  });
+
+  // ── Visibility tracking + speculative warmup ──────────────────────────────
+  const SPECULATIVE_LOOKAHEAD = 8; // pages beyond the visible window to pre-render
+  const PIN_COUNT = 3; // first/last N pages stay pinned in the LRU cache
+
+  createEffect(() => {
+    const items = virtualizer.getVirtualItems();
+    if (items.length === 0) return;
+
+    const cols = columns();
+    const bucket = getBucket(contentWidth());
+    const pages = state.pages;
+    const total = pages.length;
+    if (total === 0) return;
+
+    // Page indices currently rendered by the virtualiser
+    const firstVisibleIdx = items[0].index * cols;
+    const lastVisibleIdx = Math.min((items[items.length - 1].index + 1) * cols - 1, total - 1);
+
+    // Tell the queue which cache keys are visible → upgrades their priority
+    const visibleKeys = new Set<string>();
+    for (let i = firstVisibleIdx; i <= lastVisibleIdx; i++) {
+      const p = pages[i];
+      if (p?.originalId) visibleKeys.add(computePreviewKey(p, bucket));
+    }
+    renderQueue.setVisibleKeys(visibleKeys);
+
+    // Schedule speculative warmup after visible renders, without blocking the main thread
+    const doWarmup = () => {
+      const cancels: Array<() => void> = [];
+
+      // Surrounding pages (lookahead window)
+      const speculativeStart = Math.max(0, firstVisibleIdx - SPECULATIVE_LOOKAHEAD);
+      const speculativeEnd = Math.min(total - 1, lastVisibleIdx + SPECULATIVE_LOOKAHEAD);
+      for (let i = speculativeStart; i <= speculativeEnd; i++) {
+        if (i >= firstVisibleIdx && i <= lastVisibleIdx) continue; // already visible
+        const p = pages[i];
+        if (!p) continue;
+        const pinned = i < PIN_COUNT || i >= total - PIN_COUNT;
+        cancels.push(warmupPreview(p, contentWidth(), 'speculative', pinned));
+      }
+
+      // Always warm first/last PIN_COUNT pages regardless of scroll position
+      for (let i = 0; i < Math.min(PIN_COUNT, total); i++) {
+        const p = pages[i];
+        if (p) cancels.push(warmupPreview(p, contentWidth(), 'speculative', true));
+      }
+      for (let i = Math.max(0, total - PIN_COUNT); i < total; i++) {
+        const p = pages[i];
+        if (p) cancels.push(warmupPreview(p, contentWidth(), 'speculative', true));
+      }
+
+      onCleanup(() => {
+        for (const c of cancels) c();
+      });
+    };
+
+    let idleHandle: number | ReturnType<typeof setTimeout>;
+    if (typeof requestIdleCallback !== 'undefined') {
+      idleHandle = requestIdleCallback(doWarmup, { timeout: 500 });
+    } else {
+      idleHandle = setTimeout(doWarmup, 500);
+    }
+
+    onCleanup(() => {
+      if (typeof cancelIdleCallback !== 'undefined') cancelIdleCallback(idleHandle as number);
+      else clearTimeout(idleHandle as ReturnType<typeof setTimeout>);
+    });
   });
 
   return (

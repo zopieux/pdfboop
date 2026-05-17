@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CURRENT_VERSION } from './changelog';
 import { resolveGeometry } from './lib/geo';
 import {
+  bookmarkVersion,
+  bumpOpenedVersion,
   deleteOriginal,
   deleteSelected,
   deleteUnusedOriginals,
   flipHSelected,
+  lastOpenedVersion,
   movePages,
   pushOperation,
   recalculatePages,
@@ -14,7 +18,9 @@ import {
   rotateCWSelected,
   selectSameAspect,
   selectSameSize,
+  setLastOpenedVersion,
   setState,
+  showChangelogModal,
   state,
   undo,
 } from './state';
@@ -439,5 +445,22 @@ describe('Resizing logic', () => {
 
     selectSameAspect(Math.SQRT2);
     expect(state.selection).toEqual(['inst_p1', 'inst_p2']);
+  });
+});
+
+describe('Changelog State logic', () => {
+  it('initializes with default version state', () => {
+    expect(lastOpenedVersion()).toBeDefined();
+    expect(bookmarkVersion()).toBeNull();
+    expect(showChangelogModal()).toBe(false);
+  });
+
+  it('bumps the stored version and opens modal when bumpOpenedVersion is called', () => {
+    // Force set to an older version to simulate a bump
+    setLastOpenedVersion(2);
+    bumpOpenedVersion();
+    expect(lastOpenedVersion()).toBe(CURRENT_VERSION);
+    expect(bookmarkVersion()).toBe(2);
+    expect(showChangelogModal()).toBe(true);
   });
 });

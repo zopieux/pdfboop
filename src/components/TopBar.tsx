@@ -10,14 +10,17 @@ import {
   Undo2,
   Upload,
 } from 'lucide-solid';
-import type { Component } from 'solid-js';
+import { type Component, Show } from 'solid-js';
+import { CURRENT_VERSION } from '../changelog';
 import { exportProject } from '../lib/export';
 import { processUpload } from '../lib/inputs';
 import {
+  bumpOpenedVersion,
   clearWorkspace,
   deleteSelected,
   flipHSelected,
   flipVSelected,
+  lastOpenedVersion,
   redo,
   rotateCCWSelected,
   rotateCWSelected,
@@ -56,6 +59,56 @@ const Title = styled('h1', {
   },
 });
 
+const VersionButton = styled('button', {
+  base: {
+    position: 'relative',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: '6px',
+    background: 'none',
+    border: 'none',
+    padding: '0 3px',
+    cursor: 'pointer',
+    borderRadius: '4px',
+    outline: 'none',
+    textDecoration: 'none',
+    selectors: {
+      '&:hover': {
+        textDecoration: 'underline',
+        textDecorationThickness: '2px',
+      },
+      '&:focus-visible': {
+        boxShadow: `0 0 0 2px ${vars.colors.primary}`,
+      },
+    },
+  },
+});
+
+const VersionText = styled('span', {
+  base: {
+    fontSize: '13px',
+    color: vars.colors.textMuted,
+    fontWeight: 500,
+    lineHeight: 1,
+  },
+});
+
+const NotificationDot = styled('div', {
+  base: {
+    position: 'absolute',
+    top: '-1px',
+    right: '-2px',
+    width: '5px',
+    height: '5px',
+    minWidth: '5px',
+    minHeight: '5px',
+    borderRadius: '50%',
+    backgroundColor: '#f97316', // bright orange (complementary of primary blue)
+    flexShrink: 0,
+  },
+});
+
 const Divider = styled('div', {
   base: {
     width: '1px',
@@ -78,6 +131,12 @@ export const TopBar: Component = () => {
     <StyledHeader>
       <ToolbarGroup>
         <Title>pdfboop</Title>
+        <VersionButton onClick={bumpOpenedVersion} title="Show changelog">
+          <VersionText>v{CURRENT_VERSION}</VersionText>
+          <Show when={lastOpenedVersion() < CURRENT_VERSION}>
+            <NotificationDot />
+          </Show>
+        </VersionButton>
         <Divider />
         <Button variant="danger" onClick={handleClear}>
           <Trash2 size={16} /> Reset

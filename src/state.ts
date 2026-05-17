@@ -1,4 +1,6 @@
+import { createSignal } from 'solid-js';
 import { createStore, produce, reconcile, unwrap } from 'solid-js/store';
+import { CURRENT_VERSION } from './changelog';
 import { resolveGeometry } from './lib/geo';
 import { computeSelection } from './lib/selection';
 import type {
@@ -54,7 +56,34 @@ const getInitialState = (): EditorState => ({
 
 const [state, setState] = createStore<EditorState>(getInitialState());
 
-export { setState, state };
+const [lastOpenedVersion, setLastOpenedVersion] = createSignal<number>(
+  typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function'
+    ? parseInt(localStorage.getItem('pdfboop_last_version') || '0', 10)
+    : 0,
+);
+const [bookmarkVersion, setBookmarkVersion] = createSignal<number | null>(null);
+const [showChangelogModal, setShowChangelogModal] = createSignal<boolean>(false);
+
+export const bumpOpenedVersion = () => {
+  const prev = lastOpenedVersion();
+  setBookmarkVersion(prev);
+
+  if (typeof localStorage !== 'undefined' && typeof localStorage.setItem === 'function') {
+    localStorage.setItem('pdfboop_last_version', CURRENT_VERSION.toString());
+  }
+  setLastOpenedVersion(CURRENT_VERSION);
+  setShowChangelogModal(true);
+};
+
+export {
+  bookmarkVersion,
+  lastOpenedVersion,
+  setLastOpenedVersion,
+  setShowChangelogModal,
+  setState,
+  showChangelogModal,
+  state,
+};
 // Core Evaluator — geometry ops (TRANSFORM, RESIZE, CROP) stay in the timeline
 // and are resolved on demand via resolveGeometry(). Only structural ops are
 // evaluated here to produce the page list.

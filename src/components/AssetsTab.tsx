@@ -1,9 +1,10 @@
 import { styled } from '@macaron-css/solid';
-import { Trash2 } from 'lucide-solid';
+import { ImageOff, Trash2 } from 'lucide-solid';
 import { type Component, createMemo, For, Show } from 'solid-js';
-import { workspaceAssets } from '../resources';
+import { type WorkspaceAsset, workspaceAssets } from '../resources';
 import { deleteSelectedAssets, selectAsset, setAssetQuality, setAssetScale, state } from '../state';
 import { vars } from '../theme';
+import type { Asset } from '../types';
 import { Button } from './ui/Button';
 import { ButtonGroup } from './ui/ButtonGroup';
 import { InfoMessage } from './ui/InfoMessage';
@@ -55,6 +56,23 @@ const AssetItemWrapper = styled('div', {
         zIndex: 1,
       },
     },
+  },
+});
+
+/** Non-interactive placeholder for assets that exceeded the memory cap. */
+const OverLimitWrapper = styled('div', {
+  base: {
+    aspectRatio: '1',
+    border: `1px dashed ${vars.colors.border}`,
+    borderRadius: '4px',
+    overflow: 'hidden',
+    position: 'relative',
+    cursor: 'default',
+    background: vars.colors.bg,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.5,
   },
 });
 
@@ -153,21 +171,32 @@ const NumberInput = styled('input', {
   },
 });
 
+function isOverLimit(a: WorkspaceAsset): a is { id: string; overLimit: true } {
+  return 'overLimit' in a && a.overLimit === true;
+}
+
 export const AssetsTab: Component = () => {
   const assets = workspaceAssets;
 
+  // Only fully-loaded assets (not over-limit) with meaningful dimensions
   const filteredAssets = createMemo(
-    () => assets()?.filter((a) => a.width > 1 || a.height > 1) || [],
+    () =>
+      assets()?.filter(
+        (a) => !isOverLimit(a) && ((a as Asset).width > 1 || (a as Asset).height > 1),
+      ) || [],
   );
 
+  // Over-limit placeholders
+  const overLimitAssets = createMemo(() => assets()?.filter(isOverLimit) || []);
+
   const selectedAssets = createMemo(() => {
-    const list = assets() || [];
+    const list = filteredAssets() as Asset[];
     const sel = state.assetSelection;
     return list.filter((a) => sel.includes(a.id));
   });
 
   const handleAssetClick = (e: MouseEvent, id: string) => {
-    const allIds = filteredAssets().map((a) => a.id);
+    const allIds = (filteredAssets() as Asset[]).map((a) => a.id);
     selectAsset(id, allIds, e.ctrlKey || e.metaKey, e.shiftKey);
   };
 
@@ -241,18 +270,20 @@ export const AssetsTab: Component = () => {
   const onDelete = async () => {
     const list = assets();
     if (!list) return;
-    await deleteSelectedAssets(list);
+    await deleteSelectedAssets(list.filter((a): a is Asset => !isOverLimit(a)));
   };
+
+  const hasAnyAsset = createMemo(() => filteredAssets().length > 0 || overLimitAssets().length > 0);
 
   return (
     <Root>
       <TabContent>
         <Show
-          when={filteredAssets().length > 0}
+          when={hasAnyAsset()}
           fallback={<InfoMessage>No images found in workspace</InfoMessage>}
         >
           <AssetGrid>
-            <For each={filteredAssets()}>
+            <For each={filteredAssets() as Asset[]}>
               {(asset) => (
                 <AssetItemWrapper
                   classList={{ selected: state.assetSelection.includes(asset.id) }}
@@ -263,6 +294,13 @@ export const AssetsTab: Component = () => {
                     {asset.width}x{asset.height}
                   </AssetMeta>
                 </AssetItemWrapper>
+              )}
+            </For>
+            <For each={overLimitAssets()}>
+              {() => (
+                <OverLimitWrapper title="Too many assets — this image was not loaded to stay within the memory limit">
+                  <ImageOff size={24} />
+                </OverLimitWrapper>
               )}
             </For>
           </AssetGrid>

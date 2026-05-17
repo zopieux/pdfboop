@@ -13,6 +13,17 @@ export const generateProjectPdf = async () => {
   const outPdf = await PDFDocument.create();
   const currentOps = state.operations.slice(0, state.historyIndex);
 
+  // Pre-load each unique source PDF once, keyed by originalId.
+  // Without this, a 600-page source would be fully parsed by pdf-lib on every
+  // output page drawn from it — O(source_size × output_pages) instead of O(source_size).
+  const srcPdfCache = new Map<string, PDFDocument>();
+  for (const page of state.pages) {
+    if (!page.originalId || srcPdfCache.has(page.originalId)) continue;
+    const blob = await getProcessedPdfBlob(page.originalId, state.historyIndex);
+    if (!blob) continue;
+    srcPdfCache.set(page.originalId, await PDFDocument.load(await blob.arrayBuffer()));
+  }
+
   for (const page of state.pages) {
     if (!page.originalId) {
       const geo = resolveGeometry(page.originalSize, currentOps, page.id);
@@ -20,10 +31,9 @@ export const generateProjectPdf = async () => {
       continue;
     }
 
-    const blob = await getProcessedPdfBlob(page.originalId, state.historyIndex);
-    if (!blob) continue;
+    const srcPdf = srcPdfCache.get(page.originalId);
+    if (!srcPdf) continue;
 
-    const srcPdf = await PDFDocument.load(await blob.arrayBuffer());
     if (page.originalPageIndex < 0 || page.originalPageIndex >= srcPdf.getPageCount()) continue;
     const [copiedPage] = await outPdf.copyPages(srcPdf, [page.originalPageIndex]);
     const { width: origWidth, height: origHeight } = copiedPage.getSize();

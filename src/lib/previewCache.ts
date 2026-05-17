@@ -2,13 +2,15 @@
  * Byte-accurate LRU cache + priority render queue for page preview canvases.
  *
  * Memory model: each cached canvas costs width × height × 4 bytes (RGBA).
- * Total quota: QUOTA_BYTES (default 100 MB).
+ * Total quota: QUOTA_BYTES.
  * Eviction: true LRU — most-recently-accessed entries survive longest.
  * Pinning: first/last pages are pinned; they're only evicted as a last resort.
  */
 
-const QUOTA_BYTES = 700 * 1024 * 1024; // 700 MB
-const MAX_CONCURRENT = 2; // max simultaneous PDF.js renders
+/** Cache memory quota. */
+const QUOTA_BYTES = 700 * 1024 * 1024;
+/** Max simultaneous PDF.js renders. */
+const MAX_CONCURRENT = 2;
 
 // ─── LRU Cache ────────────────────────────────────────────────────────────────
 
